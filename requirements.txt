@@ -1,0 +1,19 @@
+# Backend dependencies
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+Flask-CORS==4.0.0
+SQLAlchemy>=2.0.45
+pandas==2.2.3
+requests>=2.28.0
+python-dotenv>=1.0.0
+Jinja2==3.1.2
+python-socketio==5.10.0
+eventlet==0.33.3
+
+# Optional: Telegram notifications
+python-telegram-bot>=20.0
+
+# Development (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+mypy>=1.5.0

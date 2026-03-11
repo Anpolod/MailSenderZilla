@@ -54,12 +54,16 @@ function DatabaseSelector({ onSelect, onError }) {
     if (selectedTables.includes(tableName)) {
       // Remove table
       setSelectedTables(prev => prev.filter(t => t !== tableName));
-      const newConfigs = { ...tableConfigs };
-      delete newConfigs[tableName];
-      setTableConfigs(newConfigs);
-      const newPreviews = { ...previews };
-      delete newPreviews[tableName];
-      setPreviews(newPreviews);
+      setTableConfigs(prev => {
+        const next = { ...prev };
+        delete next[tableName];
+        return next;
+      });
+      setPreviews(prev => {
+        const next = { ...prev };
+        delete next[tableName];
+        return next;
+      });
     } else {
       // Add table
       setSelectedTables(prev => [...prev, tableName]);
@@ -144,95 +148,95 @@ function DatabaseSelector({ onSelect, onError }) {
             <p>No tables found in the database. Please make sure your database file exists and contains tables.</p>
           </div>
         ) : (
-          <>
-            <div className="db-tree">
-              <div className="tree-root">
-                <span className="tree-node-icon">▾</span>
-                <span className="tree-node-title">Main_DataBase.db</span>
-                <span className="tree-root-meta">{tables.length} tables</span>
+          <div className={`db-selector-split ${selectedTables.length === 0 ? 'no-selection' : ''}`}>
+            <div className="db-selector-left">
+              <div className="db-selector-left-header">
+                <strong>Main_DataBase.db</strong>
+                <span>{tables.length} tables</span>
               </div>
-
-              <div className="tree-children">
+              <div className="db-table-list">
                 {tables.map(table => {
                   const isSelected = selectedTables.includes(table);
-                  const config = tableConfigs[table];
-                  const preview = previews[table];
-                  const columns = config?.columns || [];
-                  
+                  const totalCount = tableConfigs[table]?.totalCount;
                   return (
-                    <div key={table} className={`tree-node ${isSelected ? 'selected' : ''}`}>
-                      <div className="tree-node-content">
-                        <label className="tree-checkbox-label">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleTableToggle(table)}
-                          />
-                          <span className="tree-table-name">{table}</span>
-                        </label>
-
-                        {isSelected && config?.totalCount !== undefined && (
-                          <span className="tree-count-badge">
-                            {config.totalCount.toLocaleString()} emails
-                          </span>
-                        )}
+                    <label key={table} className={`db-table-list-item ${isSelected ? 'selected' : ''}`}>
+                      <div className="db-table-main">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleTableToggle(table)}
+                        />
+                        <span className="db-table-name">{table}</span>
                       </div>
-                      
-                      {isSelected && (
-                        <div className="tree-node-children">
-                          <div className="form-group">
-                            <label htmlFor={`email_column_${table}`}>Email Column *</label>
-                            <select
-                              id={`email_column_${table}`}
-                              value={config?.emailColumn || ''}
-                              onChange={(e) => handleEmailColumnChange(table, e.target.value)}
-                              required
-                            >
-                              <option value="">-- Select email column --</option>
-                              {columns.length > 0 ? (
-                                columns.map(column => (
-                                  <option key={column} value={column}>{column}</option>
-                                ))
-                              ) : (
-                                <option value={config?.emailColumn || ''}>
-                                  {config?.emailColumn || 'Loading...'}
-                                </option>
-                              )}
-                            </select>
-                          </div>
-                          
-                          {preview && (
-                            <div className="tree-preview">
-                              <div className="preview-info-small">
-                                <span><strong>Total Records:</strong> {preview.total_count}</span>
-                              </div>
-                              {loadingPreviews[table] ? (
-                                <div className="loading">Loading preview...</div>
-                              ) : (
-                                <div className="preview-emails-small">
-                                  <strong>Sample emails:</strong>
-                                  {preview.preview.slice(0, 3).map((email, index) => (
-                                    <div key={index} className="preview-email-item">{email}</div>
-                                  ))}
-                                  {preview.preview.length > 3 && (
-                                    <div className="preview-email-more">...</div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                      {isSelected && totalCount !== undefined && (
+                        <span className="db-table-badge">{totalCount.toLocaleString()} emails</span>
                       )}
-                    </div>
+                    </label>
                   );
                 })}
               </div>
             </div>
-            
+
+            {selectedTables.length > 0 && (
+              <div className="db-selector-right">
+                <div className="db-selected-configs">
+                  {selectedTables.map(table => {
+                    const config = tableConfigs[table];
+                    const preview = previews[table];
+                    const columns = config?.columns || [];
+                    return (
+                      <div key={table} className="db-selected-card">
+                        <div className="db-selected-card-header">
+                          <strong>{table}</strong>
+                          {config?.totalCount !== undefined && (
+                            <span>{config.totalCount.toLocaleString()} emails</span>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label htmlFor={`email_column_${table}`}>Email Column *</label>
+                          <select
+                            id={`email_column_${table}`}
+                            value={config?.emailColumn || ''}
+                            onChange={(e) => handleEmailColumnChange(table, e.target.value)}
+                            required
+                          >
+                            <option value="">-- Select email column --</option>
+                            {columns.length > 0 ? (
+                              columns.map(column => (
+                                <option key={column} value={column}>{column}</option>
+                              ))
+                            ) : (
+                              <option value={config?.emailColumn || ''}>
+                                {config?.emailColumn || 'Loading...'}
+                              </option>
+                            )}
+                          </select>
+                        </div>
+                        {loadingPreviews[table] ? (
+                          <div className="loading">Loading preview...</div>
+                        ) : preview && (
+                          <div className="preview-emails-small">
+                            <strong>Sample emails:</strong>
+                            {preview.preview.slice(0, 3).map((email, index) => (
+                              <div key={index} className="preview-email-item">{email}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!loading && tables.length > 0 && selectedTables.length > 0 && (
+          <>
             {selectedTables.length > 0 && (
               <div className="tree-summary">
                 <span>Selected: <strong>{selectedTables.length}</strong> tables</span>
-                <span>Total emails: <strong>{totalEmailCount.toLocaleString()}</strong></span>
+                <span>Selected email addresses: <strong>{totalEmailCount.toLocaleString()}</strong></span>
               </div>
             )}
           </>

@@ -257,283 +257,289 @@ function CampaignForm() {
 
   return (
     <div className="campaign-form-container">
-      <h2>Create New Campaign</h2>
+      <div className="campaign-form-page-header">
+        <h2>Create New Campaign</h2>
+        <p>Configure delivery on the left, prepare email content on the right.</p>
+      </div>
       
       {error && <div className="error-message">{error}</div>}
 
       <form onSubmit={handleSubmit} className="campaign-form">
-        <div className="form-section">
-          <h3>Basic Information</h3>
-          
-          <div className="form-group">
-            <label htmlFor="name">Campaign Name *</label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              required
-              placeholder="My Email Campaign"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="sender_email">Sender Email *</label>
-            <input
-              type="email"
-              id="sender_email"
-              name="sender_email"
-              value={formData.sender_email}
-              onChange={handleChange}
-              required
-              placeholder="sender@example.com"
-            />
-          </div>
-        </div>
-
-        <div className="form-section">
-          <h3>Email Provider</h3>
-          
-          <div className="form-group">
-            <label>Provider *</label>
-            <div className="radio-group">
-              <label>
+        <div className="campaign-form-layout">
+          <div className="campaign-form-column">
+            <div className="form-section">
+              <h3>Basic Information</h3>
+              
+              <div className="form-group">
+                <label htmlFor="name">Campaign Name *</label>
                 <input
-                  type="radio"
-                  name="provider"
-                  value="mailersend"
-                  checked={formData.provider === 'mailersend'}
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={formData.name}
                   onChange={handleChange}
+                  required
+                  placeholder="My Email Campaign"
                 />
-                MailerSend
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="provider"
-                  value="gmail"
-                  checked={formData.provider === 'gmail'}
-                  onChange={handleChange}
-                />
-                Gmail
-              </label>
-            </div>
-          </div>
-
-          {formData.provider === 'mailersend' && (
-            <div className="form-group">
-              <div className="form-group-header">
-                <label htmlFor="api_token">MailerSend API Token *</label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={useSavedCredentials}
-                    onChange={(e) => {
-                      setUseSavedCredentials(e.target.checked);
-                      if (e.target.checked) {
-                        loadSavedCredentials();
-                      }
-                    }}
-                  />
-                  Use saved credentials
-                </label>
               </div>
-              <input
-                type="password"
-                id="api_token"
-                name="api_token"
-                value={formData.api_token}
-                onChange={handleChange}
-                required={formData.provider === 'mailersend'}
-                placeholder="mlsn.xxxxx"
-                disabled={useSavedCredentials}
-              />
-              {useSavedCredentials && formData.api_token && (
-                <small className="form-help">Using saved MailerSend API token from settings</small>
+
+              <div className="form-group">
+                <label htmlFor="sender_email">Sender Email *</label>
+                <input
+                  type="email"
+                  id="sender_email"
+                  name="sender_email"
+                  value={formData.sender_email}
+                  onChange={handleChange}
+                  required
+                  placeholder="sender@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="form-section">
+              <h3>Email Provider</h3>
+              
+              <div className="form-group">
+                <label>Provider *</label>
+                <div className="radio-group">
+                  <label>
+                    <input
+                      type="radio"
+                      name="provider"
+                      value="mailersend"
+                      checked={formData.provider === 'mailersend'}
+                      onChange={handleChange}
+                    />
+                    MailerSend
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="provider"
+                      value="gmail"
+                      checked={formData.provider === 'gmail'}
+                      onChange={handleChange}
+                    />
+                    Gmail
+                  </label>
+                </div>
+              </div>
+
+              {formData.provider === 'mailersend' && (
+                <div className="form-group">
+                  <div className="form-group-header">
+                    <label htmlFor="api_token">MailerSend API Token *</label>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={useSavedCredentials}
+                        onChange={(e) => {
+                          setUseSavedCredentials(e.target.checked);
+                          if (e.target.checked) {
+                            loadSavedCredentials();
+                          }
+                        }}
+                      />
+                      Use saved credentials
+                    </label>
+                  </div>
+                  <input
+                    type="password"
+                    id="api_token"
+                    name="api_token"
+                    value={formData.api_token}
+                    onChange={handleChange}
+                    required={formData.provider === 'mailersend'}
+                    placeholder="mlsn.xxxxx"
+                    disabled={useSavedCredentials}
+                  />
+                  {useSavedCredentials && formData.api_token && (
+                    <small className="form-help">Using saved MailerSend API token from settings</small>
+                  )}
+                </div>
+              )}
+
+              {formData.provider === 'gmail' && (
+                <div className="form-group">
+                  <div className="form-group-header">
+                    <label htmlFor="app_password">Gmail App Password *</label>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={useSavedCredentials}
+                        onChange={(e) => {
+                          setUseSavedCredentials(e.target.checked);
+                          if (e.target.checked) {
+                            loadSavedCredentials();
+                          }
+                        }}
+                      />
+                      Use saved credentials
+                    </label>
+                  </div>
+                  <input
+                    type="password"
+                    id="app_password"
+                    name="app_password"
+                    value={formData.app_password}
+                    onChange={handleChange}
+                    required={formData.provider === 'gmail'}
+                    placeholder="16-character app password"
+                    disabled={useSavedCredentials}
+                  />
+                  {useSavedCredentials && formData.app_password && (
+                    <small className="form-help">Using saved Gmail App Password from settings</small>
+                  )}
+                </div>
               )}
             </div>
-          )}
 
-          {formData.provider === 'gmail' && (
-            <div className="form-group">
-              <div className="form-group-header">
-                <label htmlFor="app_password">Gmail App Password *</label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={useSavedCredentials}
-                    onChange={(e) => {
-                      setUseSavedCredentials(e.target.checked);
-                      if (e.target.checked) {
-                        loadSavedCredentials();
-                      }
-                    }}
-                  />
-                  Use saved credentials
-                </label>
+            <div className="form-section">
+              <h3>Data Source *</h3>
+              
+              <div className="form-group">
+                <label>Source Type *</label>
+                <div className="radio-group">
+                  <label>
+                    <input
+                      type="radio"
+                      name="data_source"
+                      value="csv"
+                      checked={dataSource === 'csv'}
+                      onChange={(e) => setDataSource(e.target.value)}
+                    />
+                    Upload CSV File
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="data_source"
+                      value="database"
+                      checked={dataSource === 'database'}
+                      onChange={(e) => setDataSource(e.target.value)}
+                    />
+                    Select from Database
+                  </label>
+                </div>
               </div>
-              <input
-                type="password"
-                id="app_password"
-                name="app_password"
-                value={formData.app_password}
-                onChange={handleChange}
-                required={formData.provider === 'gmail'}
-                placeholder="16-character app password"
-                disabled={useSavedCredentials}
-              />
-              {useSavedCredentials && formData.app_password && (
-                <small className="form-help">Using saved Gmail App Password from settings</small>
+
+              {dataSource === 'csv' && (
+                <div className="form-group">
+                  <label>CSV File *</label>
+                  <CSVUploader
+                    onUploadSuccess={handleCSVUpload}
+                    onError={handleCSVError}
+                  />
+                </div>
+              )}
+
+              {dataSource === 'database' && (
+                <DatabaseSelector
+                  onSelect={handleDatabaseSelect}
+                  onError={handleDatabaseError}
+                />
               )}
             </div>
-          )}
-        </div>
 
-        <div className="form-section">
-          <h3>Data Source *</h3>
-          
-          <div className="form-group">
-            <label>Source Type *</label>
-            <div className="radio-group">
-              <label>
+            <div className="form-section form-section-compact">
+              <h3>Advanced Settings</h3>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="batch_size">Batch Size</label>
+                  <input
+                    type="number"
+                    id="batch_size"
+                    name="batch_size"
+                    value={formData.batch_size}
+                    onChange={handleChange}
+                    min="1"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="delay_between_batches">Delay (seconds)</label>
+                  <input
+                    type="number"
+                    id="delay_between_batches"
+                    name="delay_between_batches"
+                    value={formData.delay_between_batches}
+                    onChange={handleChange}
+                    min="0"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="daily_limit">Daily Limit</label>
+                  <input
+                    type="number"
+                    id="daily_limit"
+                    name="daily_limit"
+                    value={formData.daily_limit}
+                    onChange={handleChange}
+                    min="1"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="campaign-form-column campaign-form-column-right">
+            <div className="form-section form-section-sticky">
+              <h3>Email Content</h3>
+
+              <div className="form-group">
+                <label htmlFor="subject">Email Subject *</label>
                 <input
-                  type="radio"
-                  name="data_source"
-                  value="csv"
-                  checked={dataSource === 'csv'}
-                  onChange={(e) => setDataSource(e.target.value)}
+                  type="text"
+                  id="subject"
+                  name="subject"
+                  value={formData.subject}
+                  onChange={handleChange}
+                  required
+                  placeholder="Job Opportunities"
                 />
-                Upload CSV File
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="data_source"
-                  value="database"
-                  checked={dataSource === 'database'}
-                  onChange={(e) => setDataSource(e.target.value)}
+              </div>
+              
+              <div className="form-group">
+                <TemplateSelector 
+                  onSelectTemplate={handleTemplateSelect}
+                  selectedTemplateId={selectedTemplateId}
                 />
-                Select from Database
-              </label>
-            </div>
-          </div>
+              </div>
+              
+              <div className="form-group">
+                <div className="form-group-header">
+                  <label htmlFor="vacancies_text">Vacancies Text (plain text, will be auto-wrapped)</label>
+                  <button 
+                    type="button" 
+                    className="btn-preview" 
+                    onClick={handlePreview}
+                    disabled={!formData.vacancies_text}
+                  >
+                    👁️ Preview
+                  </button>
+                </div>
+                <textarea
+                  id="vacancies_text"
+                  name="vacancies_text"
+                  value={formData.vacancies_text}
+                  onChange={handleChange}
+                  rows="18"
+                  placeholder="Paste your vacancy text here..."
+                />
+              </div>
 
-          {dataSource === 'csv' && (
-            <div className="form-group">
-              <label>CSV File *</label>
-              <CSVUploader
-                onUploadSuccess={handleCSVUpload}
-                onError={handleCSVError}
-              />
+              <div className="form-actions form-actions-inline">
+                <button type="button" onClick={() => navigate('/')} className="btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={submitting}>
+                  {submitting ? 'Creating...' : 'Create Campaign'}
+                </button>
+              </div>
             </div>
-          )}
-
-          {dataSource === 'database' && (
-            <DatabaseSelector
-              onSelect={handleDatabaseSelect}
-              onError={handleDatabaseError}
-            />
-          )}
-        </div>
-
-        <div className="form-section">
-          <h3>Advanced Settings</h3>
-          
-          <div className="form-group">
-            <label htmlFor="email_column">Email Column Name</label>
-            <input
-              type="text"
-              id="email_column"
-              name="email_column"
-              value={formData.email_column}
-              onChange={handleChange}
-              placeholder="email"
-            />
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="batch_size">Batch Size</label>
-              <input
-                type="number"
-                id="batch_size"
-                name="batch_size"
-                value={formData.batch_size}
-                onChange={handleChange}
-                min="1"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="delay_between_batches">Delay (seconds)</label>
-              <input
-                type="number"
-                id="delay_between_batches"
-                name="delay_between_batches"
-                value={formData.delay_between_batches}
-                onChange={handleChange}
-                min="0"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="daily_limit">Daily Limit</label>
-              <input
-                type="number"
-                id="daily_limit"
-                name="daily_limit"
-                value={formData.daily_limit}
-                onChange={handleChange}
-                min="1"
-              />
-            </div>
-          </div>
-        </div>
-
-          <div className="form-section">
-            <h3>Email Content</h3>
-
-            <div className="form-group">
-              <label htmlFor="subject">Email Subject *</label>
-              <input
-                type="text"
-                id="subject"
-                name="subject"
-                value={formData.subject}
-                onChange={handleChange}
-                required
-                placeholder="Job Opportunities"
-              />
-            </div>
-            
-            <div className="form-group">
-              <TemplateSelector 
-                onSelectTemplate={handleTemplateSelect}
-                selectedTemplateId={selectedTemplateId}
-              />
-            </div>
-            
-            <div className="form-group">
-            <div className="form-group-header">
-              <label htmlFor="vacancies_text">Vacancies Text (plain text, will be auto-wrapped)</label>
-              <button 
-                type="button" 
-                className="btn-preview" 
-                onClick={handlePreview}
-                disabled={!formData.vacancies_text}
-              >
-                👁️ Preview
-              </button>
-            </div>
-            <textarea
-              id="vacancies_text"
-              name="vacancies_text"
-              value={formData.vacancies_text}
-              onChange={handleChange}
-              rows="8"
-              placeholder="Paste your vacancy text here..."
-            />
           </div>
         </div>
 
@@ -543,15 +549,6 @@ function CampaignForm() {
           htmlContent={previewHtml}
           loading={previewLoading}
         />
-
-        <div className="form-actions">
-          <button type="button" onClick={() => navigate('/')} className="btn-secondary">
-            Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={submitting}>
-            {submitting ? 'Creating...' : 'Create Campaign'}
-          </button>
-        </div>
       </form>
     </div>
   );

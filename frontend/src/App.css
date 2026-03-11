@@ -436,22 +436,32 @@ body {
 
 /* Forms */
 .campaign-form-container {
-  max-width: 900px;
+  max-width: 1500px;
   margin: 0 auto;
   padding: 2rem;
 }
 
-.campaign-form-container > h2 {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--gray-900);
-  margin-bottom: 2rem;
+.campaign-form-page-header {
+  margin-bottom: 1rem;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   padding: 1.5rem 2rem;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.campaign-form-page-header > h2 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin: 0;
+}
+
+.campaign-form-page-header > p {
+  margin: 0.4rem 0 0;
+  color: var(--gray-600);
+  font-size: 0.95rem;
 }
 
 .campaign-form {
@@ -461,6 +471,30 @@ body {
   padding: 2rem;
   box-shadow: var(--shadow-lg);
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.campaign-form-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(420px, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.campaign-form-column {
+  min-width: 0;
+}
+
+.campaign-form-column-right .form-section {
+  margin-bottom: 0;
+}
+
+.form-section-sticky {
+  position: sticky;
+  top: 1rem;
+}
+
+.form-section-compact {
+  margin-bottom: 0;
 }
 
 .form-section {
@@ -574,6 +608,10 @@ body {
   margin-top: 2rem;
   padding-top: 2rem;
   border-top: 1px solid var(--gray-200);
+}
+
+.form-actions-inline {
+  margin-top: 1rem;
 }
 
 /* Modal Styles */
@@ -1495,6 +1533,129 @@ body {
   width: 100%;
 }
 
+.db-selector-split {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(340px, 1.05fr);
+  gap: 1rem;
+}
+
+.db-selector-split.no-selection {
+  grid-template-columns: 1fr;
+}
+
+.db-selector-left,
+.db-selector-right {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  background: #fff;
+  min-height: 260px;
+}
+
+.db-selector-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.db-selector-left-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--gray-200);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--gray-600);
+}
+
+.db-table-list {
+  padding: 0.5rem;
+  overflow: auto;
+  max-height: 420px;
+}
+
+.db-table-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+}
+
+.db-table-list-item:hover {
+  background: var(--gray-50);
+  border-color: var(--gray-200);
+}
+
+.db-table-list-item.selected {
+  background: #f7f4ee;
+  border-color: var(--primary-light);
+}
+
+.db-table-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.db-table-name {
+  font-size: 0.9rem;
+  color: var(--gray-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-table-badge {
+  font-size: 0.75rem;
+  color: var(--gray-700);
+  background: #fff;
+  border: 1px solid var(--gray-300);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  white-space: nowrap;
+}
+
+.db-selector-right {
+  padding: 0.8rem;
+}
+
+.db-panel-empty {
+  color: var(--gray-500);
+  font-size: 0.9rem;
+  padding: 1rem;
+}
+
+.db-selected-configs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.db-selected-card {
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  padding: 0.8rem;
+  background: #fffdf9;
+}
+
+.db-selected-card .form-group {
+  margin-bottom: 0.65rem;
+}
+
+.db-selected-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  color: var(--gray-700);
+  font-size: 0.82rem;
+}
+
 .tables-selection {
   display: flex;
   flex-direction: column;
@@ -1921,4 +2082,20 @@ textarea:focus,
 .status-pending {
   background: #ebe6dc;
   color: #5a5044;
+}
+
+@media (max-width: 1180px) {
+  .campaign-form-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .form-section-sticky {
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .db-selector-split {
+    grid-template-columns: 1fr;
+  }
 }

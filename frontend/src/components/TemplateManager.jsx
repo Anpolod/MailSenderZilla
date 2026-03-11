@@ -110,11 +110,11 @@ function TemplateManager({ isOpen, onSelectTemplate, onClose }) {
     <div className="template-manager-modal">
       <div className="modal-content template-manager-content">
         <div className="template-manager-header">
-          <div className="header-left">
+          <div className="template-manager-header-left">
             <h2>Email Templates</h2>
             <span className="templates-count">({templates.length} saved)</span>
           </div>
-          <div className="header-actions">
+          <div className="template-manager-header-actions">
             {!showForm && (
               <button onClick={() => setShowForm(true)} className="btn-primary">
                 <span className="btn-icon">+</span>

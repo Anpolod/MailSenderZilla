@@ -28,13 +28,13 @@ function CampaignDetail() {
   useEffect(() => {
     loadCampaign();
     
-    // Refresh campaign details every 3 seconds
-    const interval = setInterval(loadCampaign, 3000);
+    // Refresh campaign details in background without full-page loading state.
+    const interval = setInterval(() => loadCampaign({ silent: true }), 3000);
     
     return () => clearInterval(interval);
   }, [id]);
 
-  const loadCampaign = async () => {
+  const loadCampaign = async ({ silent = false } = {}) => {
     try {
       const data = await getCampaign(id);
       setCampaign(data);
@@ -43,7 +43,9 @@ function CampaignDetail() {
       setError('Failed to load campaign: ' + (err.message || 'Unknown error'));
       console.error('Failed to load campaign:', err);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 

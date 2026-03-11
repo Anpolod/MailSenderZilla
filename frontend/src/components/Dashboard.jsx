@@ -17,9 +17,11 @@ function Dashboard() {
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterProvider, setFilterProvider] = useState('ALL');
 
-  const loadCampaigns = async () => {
+  const loadCampaigns = async ({ silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       const data = await getCampaigns();
       setCampaigns(data);
       setError('');
@@ -28,7 +30,9 @@ function Dashboard() {
       setError('Failed to load campaigns: ' + (err.message || 'Unknown error'));
       console.error('Failed to load campaigns:', err);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -68,8 +72,8 @@ function Dashboard() {
   useEffect(() => {
     loadCampaigns();
     
-    // Refresh campaigns every 5 seconds
-    const interval = setInterval(loadCampaigns, 5000);
+    // Refresh campaigns in background without showing full-page loading state.
+    const interval = setInterval(() => loadCampaigns({ silent: true }), 5000);
     
     return () => clearInterval(interval);
   }, []);

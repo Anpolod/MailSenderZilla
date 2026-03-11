@@ -7,6 +7,7 @@ import uuid
 import re
 import logging
 import traceback
+import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from werkzeug.utils import secure_filename
@@ -81,9 +82,37 @@ CORS(app)
 
 # Thread pool for running campaigns
 executor = ThreadPoolExecutor(max_workers=5)
+campaign_task_lock = threading.Lock()
+campaign_tasks = {}
 
 # Campaign log callbacks (campaign_id -> socketio room)
 campaign_log_rooms = {}
+
+
+def register_campaign_task(campaign_id: int, future) -> None:
+    """Track campaign future so stale running statuses can be detected."""
+    with campaign_task_lock:
+        campaign_tasks[campaign_id] = future
+
+    def _cleanup(done_future):
+        with campaign_task_lock:
+            current = campaign_tasks.get(campaign_id)
+            if current is done_future:
+                campaign_tasks.pop(campaign_id, None)
+
+    future.add_done_callback(_cleanup)
+
+
+def is_campaign_task_active(campaign_id: int) -> bool:
+    """Return True if campaign has an active in-process future."""
+    with campaign_task_lock:
+        future = campaign_tasks.get(campaign_id)
+        if future is None:
+            return False
+        if future.done():
+            campaign_tasks.pop(campaign_id, None)
+            return False
+        return True
 
 
 @socketio.on('connect')
@@ -268,6 +297,7 @@ def create_campaign():
                 data['provider_config'],
                 vacancies_text
             )
+            register_campaign_task(campaign_id, future)
             logger.info(f"Campaign {campaign_id} submitted to executor successfully")
         except Exception as e:
             logger.error(f"Failed to submit campaign {campaign_id} to executor: {e}\n{traceback.format_exc()}")
@@ -420,6 +450,7 @@ def start_campaign(campaign_id):
                 provider_config,
                 vacancies_text
             )
+            register_campaign_task(campaign_id, future)
             logger.info(f"Campaign {campaign_id} submitted to executor successfully")
             return jsonify({'success': True, 'message': 'Campaign started successfully'})
         except Exception as e:
@@ -523,6 +554,7 @@ def resume_campaign(campaign_id):
                 provider_config,
                 vacancies_text
             )
+            register_campaign_task(campaign_id, future)
             logger.info(f"Campaign {campaign_id} resumed successfully")
             return jsonify({'success': True, 'message': 'Campaign resumed successfully'})
         except Exception as e:
@@ -601,9 +633,13 @@ def restart_campaign(campaign_id):
         if not campaign:
             return jsonify({'success': False, 'error': 'Campaign not found'}), 404
         
-        # Only allow restart if campaign is completed, failed, or paused
+        # Allow restart for stale "running" campaigns (no active executor task).
         if campaign.status == 'running':
-            return jsonify({'success': False, 'error': 'Cannot restart a running campaign'}), 400
+            if is_campaign_task_active(campaign_id):
+                return jsonify({'success': False, 'error': 'Cannot restart an active running campaign'}), 400
+            logger.warning(f"Campaign {campaign_id} has stale running status without active task, allowing restart.")
+            campaign.status = 'failed'
+            session.commit()
         
         # Get provider config from settings
         if campaign.provider == 'mailersend':
@@ -654,6 +690,7 @@ def restart_campaign(campaign_id):
                     provider_config,
                     vacancies_text
                 )
+                register_campaign_task(campaign_id, future)
                 logger.info(f"Campaign {campaign_id} restarted successfully")
                 return jsonify({'success': True, 'message': 'Campaign restarted successfully'})
             except Exception as e:
@@ -766,9 +803,11 @@ def delete_campaign(campaign_id):
         if not campaign:
             return jsonify({'success': False, 'error': 'Campaign not found'}), 404
         
-        # Check if campaign is running
+        # Block deletion only for active running campaigns.
         if campaign.status == 'running':
-            return jsonify({'success': False, 'error': 'Cannot delete a running campaign. Please wait for it to complete.'}), 400
+            if is_campaign_task_active(campaign_id):
+                return jsonify({'success': False, 'error': 'Cannot delete an active running campaign. Please wait for it to complete.'}), 400
+            logger.warning(f"Campaign {campaign_id} has stale running status without active task, allowing delete.")
         
         # Delete campaign (logs will be cascade deleted due to relationship)
         session.delete(campaign)

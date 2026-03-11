@@ -76,13 +76,12 @@ function CampaignDetail() {
   const canRestart = () => {
     if (!campaign) return false;
     const status = campaign.status?.toLowerCase();
-    return status === 'completed' || status === 'failed' || status === 'paused';
+    return status === 'completed' || status === 'failed' || status === 'paused' || status === 'running';
   };
 
   const canDelete = () => {
     if (!campaign) return false;
-    const status = campaign.status?.toLowerCase();
-    return status !== 'running';
+    return true;
   };
 
   const canStart = () => {

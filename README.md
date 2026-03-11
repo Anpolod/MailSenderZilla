@@ -48,6 +48,8 @@ MailSenderZilla/
 
 ## Installation
 
+For a full development/production workflow with `gunicorn + systemd + nginx`, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ### Platform-Specific Guides
 
 - **Windows**: See [RUN_WINDOWS.md](RUN_WINDOWS.md)

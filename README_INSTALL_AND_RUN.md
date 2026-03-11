@@ -76,6 +76,7 @@ You can also use helper scripts:
 ```bash
 ./run_backend.sh
 ./run_frontend.sh
+./run_local.sh
 ```
 
 ## 4. Run the app (production-like local mode)
@@ -121,6 +122,8 @@ TELEGRAM_CHAT_ID=
 - Frontend cannot reach API: verify backend is running on `http://localhost:5000`.
 
 ## 8. Ubuntu Server deployment (systemd + nginx)
+
+For an end-to-end production workflow (including updates from git), see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Preconditions:
 - project path: `/home/deploy/mailsenderzilla`

@@ -10,6 +10,7 @@ import traceback
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
 
 # Set up logging
 logging.basicConfig(
@@ -17,6 +18,38 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+_bootstrapped = False
+
+
+def _to_bool(value: str, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def load_environment() -> str:
+    """Load environment variables from env files based on APP_ENV/ENV_FILE."""
+    app_env = os.getenv('APP_ENV', 'development').strip().lower()
+    explicit_env_file = os.getenv('ENV_FILE', '').strip()
+
+    env_files = []
+    if explicit_env_file:
+        env_files.append(explicit_env_file)
+    else:
+        if app_env == 'production':
+            env_files.append('.env.production')
+        else:
+            env_files.append('.env.development')
+        env_files.append('.env')
+
+    for env_file in env_files:
+        env_path = env_file if os.path.isabs(env_file) else os.path.join(PROJECT_ROOT, env_file)
+        if os.path.exists(env_path):
+            load_dotenv(env_path, override=False)
+
+    return os.getenv('APP_ENV', app_env).strip().lower()
 
 from backend.models.database import init_db, get_session, Campaign, Log, Settings, Blacklist, Template
 from backend.services.campaign_service import CampaignService
@@ -80,6 +113,29 @@ def log_callback(campaign_id: int, level: str, message: str):
         'message': message,
         'timestamp': datetime.utcnow().isoformat()
     }, room=room)
+
+
+def bootstrap_application() -> None:
+    """Initialize database and run non-destructive migrations once per process."""
+    global _bootstrapped
+    if _bootstrapped:
+        return
+
+    init_db()
+    migrations = [
+        ('backend.migrate_add_database_table', 'migrate_add_database_table', 'Migration check failed'),
+        ('backend.migrate_add_email_content', 'migrate_add_email_content', 'Email content migration check failed'),
+        ('backend.migrate_add_templates', 'migrate_add_templates', 'Templates migration check failed'),
+        ('backend.migrate_multi_table', 'migrate_multi_table', 'Multi-table migration check failed'),
+    ]
+    for module_path, fn_name, warning_prefix in migrations:
+        try:
+            module = __import__(module_path, fromlist=[fn_name])
+            getattr(module, fn_name)()
+        except Exception as e:
+            logger.warning(f"{warning_prefix}: {e}")
+
+    _bootstrapped = True
 
 
 # API Routes
@@ -1123,41 +1179,18 @@ def serve_react_app(path):
 
 
 if __name__ == '__main__':
-    # Initialize database
-    init_db()
-    
-    # Run migrations to add columns if needed
-    try:
-        from backend.migrate_add_database_table import migrate_add_database_table
-        migrate_add_database_table()
-    except Exception as e:
-        logger.warning(f"Migration check failed: {e}")
-    
-    try:
-        from backend.migrate_add_email_content import migrate_add_email_content
-        migrate_add_email_content()
-    except Exception as e:
-        logger.warning(f"Email content migration check failed: {e}")
-    
-    try:
-        from backend.migrate_add_templates import migrate_add_templates
-        migrate_add_templates()
-    except Exception as e:
-        logger.warning(f"Templates migration check failed: {e}")
-    
-    try:
-        from backend.migrate_multi_table import migrate_multi_table
-        migrate_multi_table()
-    except Exception as e:
-        logger.warning(f"Multi-table migration check failed: {e}")
-    
-    # Run app
-    debug_mode = os.getenv('MAILSENDER_DEBUG', '0').lower() in {'1', 'true', 'yes'}
+    app_env = load_environment()
+    bootstrap_application()
+
+    default_debug = app_env == 'development'
+    debug_mode = _to_bool(os.getenv('MAILSENDER_DEBUG'), default=default_debug)
+    allow_unsafe_werkzeug = _to_bool(os.getenv('ALLOW_UNSAFE_WERKZEUG'), default=True)
+
     socketio.run(
         app,
-        host='0.0.0.0',
+        host=os.getenv('HOST', '0.0.0.0'),
         port=int(os.getenv('PORT', '5000')),
         debug=debug_mode,
         use_reloader=debug_mode,
-        allow_unsafe_werkzeug=True
+        allow_unsafe_werkzeug=allow_unsafe_werkzeug
     )

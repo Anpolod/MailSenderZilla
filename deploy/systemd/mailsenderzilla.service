@@ -9,7 +9,7 @@ Group=deploy
 WorkingDirectory=/home/deploy/mailsenderzilla
 Environment="PATH=/home/deploy/mailsenderzilla/.venv/bin"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/home/deploy/mailsenderzilla/.venv/bin/gunicorn -k eventlet -w 1 -b 127.0.0.1:5000 backend.app:app
+ExecStart=/home/deploy/mailsenderzilla/.venv/bin/gunicorn --chdir /home/deploy/mailsenderzilla -w 2 --threads 8 -b 127.0.0.1:5000 backend.app:app
 Restart=always
 RestartSec=3
 

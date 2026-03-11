@@ -119,3 +119,41 @@ TELEGRAM_CHAT_ID=
 - Port `3000` busy: run `npm run dev -- --port 3001`.
 - `ModuleNotFoundError`: activate `.venv` and reinstall `pip install -r requirements.txt`.
 - Frontend cannot reach API: verify backend is running on `http://localhost:5000`.
+
+## 8. Ubuntu Server deployment (systemd + nginx)
+
+Preconditions:
+- project path: `/home/deploy/mailsenderzilla`
+- frontend already built (`frontend/dist`)
+- backend dependencies installed in `.venv`
+
+### 8.1 Install and enable backend service
+
+```bash
+sudo cp deploy/systemd/mailsenderzilla.service /etc/systemd/system/mailsenderzilla.service
+sudo systemctl daemon-reload
+sudo systemctl enable mailsenderzilla
+sudo systemctl restart mailsenderzilla
+sudo systemctl status mailsenderzilla --no-pager -l
+```
+
+### 8.2 Configure nginx reverse proxy
+
+```bash
+sudo cp deploy/nginx/mailsenderzilla.conf /etc/nginx/sites-available/mailsenderzilla.conf
+sudo ln -sf /etc/nginx/sites-available/mailsenderzilla.conf /etc/nginx/sites-enabled/mailsenderzilla.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+If you have duplicate `server_name` entries, disable old site configs that use the same IP/domain to avoid nginx warnings and unexpected routing.
+
+### 8.3 Verify API and frontend route wiring
+
+```bash
+curl -i --max-time 5 http://127.0.0.1:5000/api/settings
+curl -i --max-time 5 http://127.0.0.1/api/settings
+curl -i --max-time 5 http://127.0.0.1/api/campaigns
+```
+
+Expected result: backend endpoints return `200`/`[]` (not `404`/`502`).

@@ -1152,4 +1152,12 @@ if __name__ == '__main__':
         logger.warning(f"Multi-table migration check failed: {e}")
     
     # Run app
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    debug_mode = os.getenv('MAILSENDER_DEBUG', '0').lower() in {'1', 'true', 'yes'}
+    socketio.run(
+        app,
+        host='0.0.0.0',
+        port=int(os.getenv('PORT', '5000')),
+        debug=debug_mode,
+        use_reloader=debug_mode,
+        allow_unsafe_werkzeug=True
+    )

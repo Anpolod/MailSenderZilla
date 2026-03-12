@@ -1210,6 +1210,158 @@ def preview_email():
         return jsonify({'success': False, 'error': str(e)}), 400
 
 
+@app.route('/api/openapi.json', methods=['GET'])
+def openapi_spec():
+    """OpenAPI spec for quick API testing with Swagger UI."""
+    host_url = request.host_url.rstrip('/')
+    spec = {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "MailSenderZilla API",
+            "version": "1.0.0",
+            "description": "API for campaigns, settings, templates, blacklist and backups."
+        },
+        "servers": [{"url": host_url}],
+        "paths": {
+            "/api/settings": {
+                "get": {"summary": "Get settings", "responses": {"200": {"description": "OK"}}},
+                "put": {"summary": "Update settings", "responses": {"200": {"description": "OK"}}}
+            },
+            "/api/campaigns": {
+                "get": {"summary": "List campaigns", "responses": {"200": {"description": "OK"}}},
+                "post": {"summary": "Create campaign", "responses": {"200": {"description": "OK"}}}
+            },
+            "/api/campaigns/{campaign_id}": {
+                "get": {
+                    "summary": "Get campaign details",
+                    "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}, "404": {"description": "Not found"}}
+                },
+                "delete": {
+                    "summary": "Delete campaign",
+                    "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "Deleted"}, "400": {"description": "Cannot delete"}}
+                }
+            },
+            "/api/campaigns/{campaign_id}/logs": {
+                "get": {
+                    "summary": "Get campaign logs",
+                    "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/campaigns/{campaign_id}/start": {
+                "post": {
+                    "summary": "Start campaign",
+                    "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}, "400": {"description": "Bad request"}}
+                }
+            },
+            "/api/campaigns/{campaign_id}/pause": {
+                "post": {
+                    "summary": "Pause campaign",
+                    "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/campaigns/{campaign_id}/resume": {
+                "post": {
+                    "summary": "Resume campaign",
+                    "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/campaigns/{campaign_id}/restart": {
+                "post": {
+                    "summary": "Restart campaign",
+                    "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/campaigns/{campaign_id}/clone": {
+                "post": {
+                    "summary": "Clone campaign",
+                    "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/upload": {
+                "post": {"summary": "Upload CSV", "responses": {"200": {"description": "OK"}}}
+            },
+            "/api/blacklist": {
+                "get": {"summary": "Get blacklist", "responses": {"200": {"description": "OK"}}},
+                "post": {"summary": "Add to blacklist", "responses": {"200": {"description": "OK"}}}
+            },
+            "/api/database/tables": {
+                "get": {"summary": "Get DB tables", "responses": {"200": {"description": "OK"}}}
+            },
+            "/api/database/tables/{table_name}/columns": {
+                "get": {
+                    "summary": "Get table columns",
+                    "parameters": [{"name": "table_name", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/database/tables/{table_name}/preview": {
+                "get": {
+                    "summary": "Preview table emails",
+                    "parameters": [{"name": "table_name", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/preview/email": {
+                "post": {"summary": "Preview email HTML", "responses": {"200": {"description": "OK"}}}
+            },
+            "/api/backup": {
+                "get": {"summary": "List backups", "responses": {"200": {"description": "OK"}}},
+                "post": {"summary": "Create backup", "responses": {"200": {"description": "OK"}}}
+            },
+            "/api/backup/restore": {
+                "post": {"summary": "Restore backup", "responses": {"200": {"description": "OK"}}}
+            },
+            "/api/backup/{backup_path}": {
+                "delete": {
+                    "summary": "Delete backup",
+                    "parameters": [{"name": "backup_path", "in": "path", "required": True, "schema": {"type": "string"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
+            }
+        }
+    }
+    return jsonify(spec)
+
+
+@app.route('/api/docs', methods=['GET'])
+def swagger_docs():
+    """Swagger UI page for API testing."""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <title>MailSenderZilla API Docs</title>
+      <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+      <style>
+        body { margin: 0; background: #f8f5ef; }
+        #swagger-ui { max-width: 1200px; margin: 0 auto; }
+      </style>
+    </head>
+    <body>
+      <div id="swagger-ui"></div>
+      <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+      <script>
+        window.ui = SwaggerUIBundle({
+          url: '/api/openapi.json',
+          dom_id: '#swagger-ui',
+          deepLinking: true,
+          presets: [SwaggerUIBundle.presets.apis]
+        });
+      </script>
+    </body>
+    </html>
+    """
+
+
 # Serve React app
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

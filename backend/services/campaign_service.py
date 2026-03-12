@@ -370,7 +370,11 @@ class CampaignService:
                     
                     if len(table_names) > 1:
                         logger.info(f"Campaign {campaign_id}: Loading emails from {len(table_names)} database tables: {', '.join(table_names)}")
-                        self._log(campaign_id, 'INFO', f'Loading emails from {len(table_names)} database tables: {', '.join(table_names)}')
+                        self._log(
+                            campaign_id,
+                            'INFO',
+                            f"Loading emails from {len(table_names)} database tables: {', '.join(table_names)}"
+                        )
                         df = read_emails_from_tables(table_names, campaign.email_column)
                     else:
                         logger.info(f"Campaign {campaign_id}: Loading emails from database table: {table_names[0]}")

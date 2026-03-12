@@ -10,6 +10,7 @@ import traceback
 import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
@@ -115,7 +116,7 @@ def is_campaign_task_active(campaign_id: int) -> bool:
         return True
 
 
-def _extract_valid_total_from_logs(log_rows) -> int | None:
+def _extract_valid_total_from_logs(log_rows) -> Optional[int]:
     """Parse total valid recipients from campaign start log."""
     for row in log_rows:
         msg = row.message or ''

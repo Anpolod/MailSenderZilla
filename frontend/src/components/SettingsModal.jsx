@@ -258,7 +258,7 @@ function SettingsModal({ isOpen, onClose, onSave }) {
             {backupError && <div className="error-message">{backupError}</div>}
             
             <div className="backup-section">
-              <div className="backup-actions">
+              <div className="backup-toolbar">
                 <button
                   onClick={handleCreateBackup}
                   disabled={backupLoading}
@@ -292,7 +292,7 @@ function SettingsModal({ isOpen, onClose, onSave }) {
                           Size: {backup.size_mb || (backup.size_bytes / 1024 / 1024).toFixed(2)} MB
                         </div>
                       </div>
-                      <div className="backup-actions">
+                      <div className="backup-item-actions">
                         <button
                           onClick={() => handleRestoreBackup(backup.filename || backup.path)}
                           className="btn-restore-backup"

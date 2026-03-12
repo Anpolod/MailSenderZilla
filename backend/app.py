@@ -8,6 +8,7 @@ import re
 import logging
 import traceback
 import threading
+from urllib.parse import unquote
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
@@ -1143,7 +1144,7 @@ def list_db_backups():
 def restore_db_backup():
     """Restore database from backup."""
     data = request.json
-    backup_path = data.get('path')
+    backup_path = unquote(data.get('path', ''))
     
     if not backup_path:
         return jsonify({'success': False, 'error': 'Backup path is required'}), 400
@@ -1163,7 +1164,7 @@ def restore_db_backup():
 def delete_db_backup(backup_path):
     """Delete a backup file."""
     try:
-        delete_backup(backup_path)
+        delete_backup(unquote(backup_path))
         return jsonify({
             'success': True,
             'message': 'Backup deleted successfully'
@@ -1223,14 +1224,120 @@ def openapi_spec():
             "description": "API for campaigns, settings, templates, blacklist and backups."
         },
         "servers": [{"url": host_url}],
+        "components": {
+            "schemas": {
+                "SettingsUpdate": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                    "example": {
+                        "mailersend_api_token": "ms_xxx",
+                        "sender_email": "noreply@example.com"
+                    }
+                },
+                "ProviderConfig": {
+                    "type": "object",
+                    "properties": {
+                        "api_token": {"type": "string"},
+                        "app_password": {"type": "string"}
+                    }
+                },
+                "CampaignCreateRequest": {
+                    "type": "object",
+                    "required": ["name", "provider", "subject", "sender_email", "provider_config"],
+                    "properties": {
+                        "name": {"type": "string"},
+                        "provider": {"type": "string", "enum": ["mailersend", "gmail"]},
+                        "subject": {"type": "string"},
+                        "sender_email": {"type": "string"},
+                        "provider_config": {"$ref": "#/components/schemas/ProviderConfig"},
+                        "csv_path": {"type": "string"},
+                        "database_table": {"type": "string"},
+                        "email_column": {"type": "string"},
+                        "batch_size": {"type": "integer", "default": 1},
+                        "delay_between_batches": {"type": "integer", "default": 45},
+                        "daily_limit": {"type": "integer", "default": 2000},
+                        "html_body": {"type": "string"},
+                        "vacancies_text": {"type": "string"}
+                    }
+                },
+                "CampaignStartResumeRequest": {
+                    "type": "object",
+                    "properties": {
+                        "provider_config": {"$ref": "#/components/schemas/ProviderConfig"},
+                        "html_body": {"type": "string"},
+                        "vacancies_text": {"type": "string"}
+                    }
+                },
+                "CampaignCloneRequest": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"}
+                    }
+                },
+                "BlacklistAddRequest": {
+                    "type": "object",
+                    "required": ["email"],
+                    "properties": {
+                        "email": {"type": "string"},
+                        "reason": {"type": "string", "default": "manual"}
+                    }
+                },
+                "PreviewEmailRequest": {
+                    "type": "object",
+                    "properties": {
+                        "subject": {"type": "string", "default": "ASAP Marine Update"},
+                        "html_body": {"type": "string"},
+                        "vacancies_text": {"type": "string"}
+                    }
+                },
+                "RestoreBackupRequest": {
+                    "type": "object",
+                    "required": ["path"],
+                    "properties": {
+                        "path": {"type": "string"}
+                    }
+                },
+                "TemplateUpsertRequest": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "subject": {"type": "string"},
+                        "html_body": {"type": "string"},
+                        "vacancies_text": {"type": "string"}
+                    }
+                }
+            }
+        },
         "paths": {
             "/api/settings": {
                 "get": {"summary": "Get settings", "responses": {"200": {"description": "OK"}}},
-                "put": {"summary": "Update settings", "responses": {"200": {"description": "OK"}}}
+                "put": {
+                    "summary": "Update settings",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/SettingsUpdate"}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "OK"}}
+                }
             },
             "/api/campaigns": {
                 "get": {"summary": "List campaigns", "responses": {"200": {"description": "OK"}}},
-                "post": {"summary": "Create campaign", "responses": {"200": {"description": "OK"}}}
+                "post": {
+                    "summary": "Create campaign",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/CampaignCreateRequest"}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "OK"}}
+                }
             },
             "/api/campaigns/{campaign_id}": {
                 "get": {
@@ -1255,6 +1362,14 @@ def openapi_spec():
                 "post": {
                     "summary": "Start campaign",
                     "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/CampaignStartResumeRequest"}
+                            }
+                        }
+                    },
                     "responses": {"200": {"description": "OK"}, "400": {"description": "Bad request"}}
                 }
             },
@@ -1269,6 +1384,14 @@ def openapi_spec():
                 "post": {
                     "summary": "Resume campaign",
                     "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/CampaignStartResumeRequest"}
+                            }
+                        }
+                    },
                     "responses": {"200": {"description": "OK"}}
                 }
             },
@@ -1283,15 +1406,51 @@ def openapi_spec():
                 "post": {
                     "summary": "Clone campaign",
                     "parameters": [{"name": "campaign_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/CampaignCloneRequest"}
+                            }
+                        }
+                    },
                     "responses": {"200": {"description": "OK"}}
                 }
             },
             "/api/upload": {
-                "post": {"summary": "Upload CSV", "responses": {"200": {"description": "OK"}}}
+                "post": {
+                    "summary": "Upload CSV",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "multipart/form-data": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["file"],
+                                    "properties": {
+                                        "file": {"type": "string", "format": "binary"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "OK"}}
+                }
             },
             "/api/blacklist": {
                 "get": {"summary": "Get blacklist", "responses": {"200": {"description": "OK"}}},
-                "post": {"summary": "Add to blacklist", "responses": {"200": {"description": "OK"}}}
+                "post": {
+                    "summary": "Add to blacklist",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/BlacklistAddRequest"}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "OK"}}
+                }
             },
             "/api/database/tables": {
                 "get": {"summary": "Get DB tables", "responses": {"200": {"description": "OK"}}}
@@ -1311,14 +1470,76 @@ def openapi_spec():
                 }
             },
             "/api/preview/email": {
-                "post": {"summary": "Preview email HTML", "responses": {"200": {"description": "OK"}}}
+                "post": {
+                    "summary": "Preview email HTML",
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/PreviewEmailRequest"}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "OK"}}
+                }
             },
             "/api/backup": {
                 "get": {"summary": "List backups", "responses": {"200": {"description": "OK"}}},
                 "post": {"summary": "Create backup", "responses": {"200": {"description": "OK"}}}
             },
             "/api/backup/restore": {
-                "post": {"summary": "Restore backup", "responses": {"200": {"description": "OK"}}}
+                "post": {
+                    "summary": "Restore backup",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/RestoreBackupRequest"}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/templates": {
+                "get": {"summary": "List templates", "responses": {"200": {"description": "OK"}}},
+                "post": {
+                    "summary": "Create template",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/TemplateUpsertRequest"}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "OK"}}
+                }
+            },
+            "/api/templates/{template_id}": {
+                "get": {
+                    "summary": "Get template",
+                    "parameters": [{"name": "template_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}, "404": {"description": "Not found"}}
+                },
+                "put": {
+                    "summary": "Update template",
+                    "parameters": [{"name": "template_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/TemplateUpsertRequest"}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"description": "OK"}}
+                },
+                "delete": {
+                    "summary": "Delete template",
+                    "parameters": [{"name": "template_id", "in": "path", "required": True, "schema": {"type": "integer"}}],
+                    "responses": {"200": {"description": "OK"}}
+                }
             },
             "/api/backup/{backup_path}": {
                 "delete": {

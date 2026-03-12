@@ -7,6 +7,34 @@ from pathlib import Path
 from backend.models.database import DB_PATH
 
 
+def _default_backup_dir() -> Path:
+    """Return canonical backup directory path."""
+    return Path(DB_PATH).parent / 'backups'
+
+
+def _resolve_backup_path(backup_path: str, backup_dir: str = None) -> Path:
+    """
+    Resolve backup path safely.
+
+    Accepts either a filename (preferred) or absolute path inside backup dir.
+    """
+    base_dir = Path(backup_dir) if backup_dir is not None else _default_backup_dir()
+    base_dir = base_dir.resolve()
+    candidate = Path(backup_path)
+
+    # For relative input, keep only filename to avoid path traversal attempts.
+    if not candidate.is_absolute():
+        candidate = base_dir / candidate.name
+
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(base_dir)
+    except ValueError:
+        raise Exception("Backup path is outside allowed backups directory")
+
+    return resolved
+
+
 def create_backup(backup_dir: str = None) -> str:
     """
     Create a backup of the database.
@@ -18,9 +46,7 @@ def create_backup(backup_dir: str = None) -> str:
         Path to created backup file
     """
     if backup_dir is None:
-        # Default backup directory
-        project_root = Path(DB_PATH).parent
-        backup_dir = project_root / 'backups'
+        backup_dir = _default_backup_dir()
     
     # Create backup directory if it doesn't exist
     backup_dir = Path(backup_dir)
@@ -50,8 +76,7 @@ def list_backups(backup_dir: str = None) -> list:
         List of backup file info dicts with path, size, and date
     """
     if backup_dir is None:
-        project_root = Path(DB_PATH).parent
-        backup_dir = project_root / 'backups'
+        backup_dir = _default_backup_dir()
     
     backup_dir = Path(backup_dir)
     if not backup_dir.exists():
@@ -86,7 +111,7 @@ def restore_backup(backup_path: str) -> bool:
     Returns:
         True if successful
     """
-    backup_path = Path(backup_path)
+    backup_path = _resolve_backup_path(backup_path)
     
     if not backup_path.exists():
         raise Exception(f"Backup file not found: {backup_path}")
@@ -125,7 +150,8 @@ def delete_backup(backup_path: str) -> bool:
         True if successful
     """
     try:
-        Path(backup_path).unlink()
+        resolved_path = _resolve_backup_path(backup_path)
+        resolved_path.unlink()
         return True
     except Exception as e:
         raise Exception(f"Failed to delete backup: {str(e)}")

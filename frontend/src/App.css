@@ -256,6 +256,50 @@ body {
   border-top: 1px solid var(--gray-200);
 }
 
+.campaign-metrics-row {
+  display: flex;
+  gap: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--gray-200);
+  flex-wrap: wrap;
+}
+
+.campaign-metric-circle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 74px;
+}
+
+.metric-ring {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.metric-inner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #fffdf9;
+  border: 1px solid var(--gray-200);
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.metric-label {
+  font-size: 0.72rem;
+  color: var(--gray-600);
+  text-align: center;
+  line-height: 1.1;
+}
+
 .stat {
   display: flex;
   flex-direction: column;

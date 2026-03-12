@@ -115,6 +115,24 @@ def is_campaign_task_active(campaign_id: int) -> bool:
         return True
 
 
+def _extract_valid_total_from_logs(log_rows) -> int | None:
+    """Parse total valid recipients from campaign start log."""
+    for row in log_rows:
+        msg = row.message or ''
+        match = re.search(r'Valid:\s*(\d+)', msg)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _extract_sent_count_from_success_log(message: str) -> int:
+    """Parse sent recipients count from success batch message."""
+    match = re.search(r'Sent to\s+(\d+)\s+recipients', message or '')
+    if not match:
+        return 0
+    return int(match.group(1))
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle WebSocket connection."""
@@ -208,9 +226,38 @@ def list_campaigns():
     session = get_session()
     try:
         campaigns = session.query(Campaign).order_by(Campaign.start_ts.desc()).all()
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         result = []
         for c in campaigns:
             try:
+                start_logs = (
+                    session.query(Log.message)
+                    .filter(
+                        Log.campaign_id == c.id,
+                        Log.level == 'INFO',
+                        Log.message.like('Campaign started. Total emails:%')
+                    )
+                    .order_by(Log.ts.desc())
+                    .all()
+                )
+                total_recipients = _extract_valid_total_from_logs(start_logs)
+
+                today_success_logs = (
+                    session.query(Log.message)
+                    .filter(
+                        Log.campaign_id == c.id,
+                        Log.level == 'SUCCESS',
+                        Log.ts >= today_start
+                    )
+                    .all()
+                )
+                sent_today = sum(_extract_sent_count_from_success_log(row.message) for row in today_success_logs)
+
+                processed_total = (c.success_cnt or 0) + (c.error_cnt or 0)
+                remaining_total = None
+                if total_recipients is not None:
+                    remaining_total = max(total_recipients - processed_total, 0)
+
                 result.append({
                     'id': c.id,
                     'name': c.name,
@@ -220,7 +267,11 @@ def list_campaigns():
                     'start_ts': c.start_ts.isoformat() if c.start_ts else None,
                     'end_ts': c.end_ts.isoformat() if c.end_ts else None,
                     'success_cnt': c.success_cnt,
-                    'error_cnt': c.error_cnt
+                    'error_cnt': c.error_cnt,
+                    'daily_limit': c.daily_limit,
+                    'sent_today': sent_today,
+                    'total_recipients': total_recipients,
+                    'remaining_total': remaining_total
                 })
             except Exception as e:
                 # Skip campaigns that cause errors (e.g., missing columns)

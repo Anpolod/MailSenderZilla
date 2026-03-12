@@ -13,7 +13,7 @@ function CampaignForm() {
     name: '',
     provider: 'mailersend',
     subject: '',
-    sender_email: '',
+    sender_email: 'asap@asap-crew.com',
     csv_path: '',
     database_table: '',
     email_column: 'email',
@@ -285,15 +285,16 @@ function CampaignForm() {
 
               <div className="form-group">
                 <label htmlFor="sender_email">Sender Email *</label>
-                <input
-                  type="email"
+                <select
                   id="sender_email"
                   name="sender_email"
                   value={formData.sender_email}
                   onChange={handleChange}
                   required
-                  placeholder="sender@example.com"
-                />
+                >
+                  <option value="asap@asap-crew.com">asap@asap-crew.com</option>
+                  <option value="info@asap-crew.com">info@asap-crew.com</option>
+                </select>
               </div>
             </div>
 

@@ -4,73 +4,219 @@
     <meta charset="UTF-8">
     <title>{{ cta_subject or 'ASAP Marine Update' }}</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            font-size: 18px; 
-            line-height: 1.7; 
-            color: #333; 
-            max-width: 650px; 
-            margin: 0 auto; 
-            padding: 20px; 
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f7f3eb;
+            color: #1f1a15;
+            font-family: "Segoe UI", Arial, sans-serif;
         }
-        .header-logo { 
-            text-align: center; 
-            margin: 0 0 16px 0; 
+        table {
+            border-spacing: 0;
+            border-collapse: collapse;
         }
-        .content { 
-            background-color: #ffffff; 
-            padding: 20px; 
+        .mail-shell {
+            width: 100%;
+            background: radial-gradient(circle at 20% -20%, #fff5de 0%, #f7f3eb 55%, #f2ede4 100%);
+            padding: 24px 12px;
         }
-        .vacancy-block { 
-            background-color: #ecf0f1; 
-            padding: 15px; 
-            margin: 15px 0; 
-            border-left: 4px solid #3498db; 
-            border-radius: 4px; 
-            white-space: pre-wrap; 
+        .mail-container {
+            width: 100%;
+            max-width: 680px;
+            margin: 0 auto;
+            background: #fffdf9;
+            border: 1px solid #e4ddd2;
+            border-radius: 18px;
+            overflow: hidden;
         }
-        .footer { 
-            font-size: 0.9em; 
-            color: #7f8c8d; 
-            margin-top: 20px; 
-            padding-top: 15px; 
-            border-top: 1px solid #ecf0f1; 
+        .header {
+            padding: 28px 32px 18px;
+            background: linear-gradient(180deg, #fffaf0 0%, #fffdf9 100%);
+            border-bottom: 1px solid #ebe6dc;
         }
-        a { 
-            color: #3498db; 
-            text-decoration: none; 
+        .header-logo {
+            text-align: center;
+            margin: 0 0 14px 0;
         }
-        a:hover { 
-            text-decoration: underline; 
+        .brand-logo {
+            display: inline-block;
+            padding: 10px 16px;
+            border: 1px solid #d8cfc1;
+            border-radius: 999px;
+            background: #fffdf9;
+            font-size: 12px;
+            letter-spacing: 0.16em;
+            font-weight: 700;
+            color: #3c342b;
+            text-transform: uppercase;
+        }
+        .brand-logo-accent {
+            color: #a86210;
+        }
+        .subject {
+            margin: 0;
+            font-size: 26px;
+            line-height: 1.25;
+            font-weight: 700;
+            color: #2f2922;
+            text-align: center;
+        }
+        .subtitle {
+            margin: 10px 0 0;
+            font-size: 14px;
+            color: #655b4f;
+            text-align: center;
+        }
+        .content {
+            padding: 24px 32px 12px;
+            font-size: 16px;
+            line-height: 1.65;
+            color: #342d25;
+        }
+        .intro-card {
+            margin: 0 0 18px;
+            padding: 16px 18px;
+            border: 1px solid #ead8be;
+            border-radius: 12px;
+            background: #fff8ec;
+        }
+        .intro-title {
+            margin: 0 0 10px;
+            font-size: 15px;
+            font-weight: 700;
+            color: #2f2922;
+        }
+        .intro-body {
+            margin: 0;
+            font-size: 15px;
+            color: #4d443a;
+        }
+        .cta-box {
+            margin: 18px 0 0;
+            padding: 14px 16px;
+            border: 1px solid #ead8be;
+            border-radius: 12px;
+            background: #fff8ec;
+            font-size: 14px;
+            color: #4d443a;
+        }
+        .cta-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 9px 14px;
+            border-radius: 999px;
+            background: #c97a1a;
+            color: #ffffff !important;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .vacancies-wrap {
+            margin: 18px 0 0;
+            padding: 18px;
+            border: 1px solid #e4ddd2;
+            border-radius: 14px;
+            background: #fffdf9;
+        }
+        .vacancies-title {
+            margin: 0 0 12px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #2f2922;
+        }
+        .vacancies-body {
+            font-size: 15px;
+            color: #342d25;
+        }
+        .vacancies-body .vacancy-block {
+            margin: 0 0 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #e4ddd2;
+            background: #f8f5ef;
+        }
+        .vacancies-body .vacancy-block:last-child {
+            margin-bottom: 0;
+        }
+        .footer {
+            margin-top: 20px;
+            padding: 16px 32px 24px;
+            border-top: 1px solid #ebe6dc;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #655b4f;
+            background: #fffcf7;
+        }
+        .footer strong {
+            color: #2f2922;
+        }
+        a {
+            color: #a86210;
+            text-decoration: none;
+        }
+        @media only screen and (max-width: 600px) {
+            .header,
+            .content,
+            .footer {
+                padding-left: 18px !important;
+                padding-right: 18px !important;
+            }
+            .subject {
+                font-size: 22px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="header-logo">
-        <img src="https://i.imgur.com/PUn562O.png" alt="A.S.A.P. Marine Crew" style="display:inline-block; max-width: 220px; width: 100%; height: auto; border: 0;" />
-    </div>
-    <div class="content">
-        {% if cta_body %}
-        <div>{{ cta_body | safe }}</div>
-        {% else %}
-        <p>Good day, Seafarers! 🌊</p>
-        <p>This is <strong>ASAP Marine Agency</strong>.</p>
-        <p>We are — leading crewing agency from Odesa, Ukraine — invites you to join our official Telegram channel 👉 <a href="https://t.me/asapcrewing">https://t.me/asapcrewing</a></p>
-        <p>Stay updated with the latest job openings and urgent vacancies!</p>
-        {% endif %}
-        
-        {% if vacancies %}
-        <h2 style="color: #2c3e50; margin-top: 30px; margin-bottom: 20px;">We are looking for:</h2>
-        <div class="vacancy-block">{{ vacancies | safe }}</div>
-        {% endif %}
-        
-        <div class="footer">
-            <p><strong>Best regards,</strong><br>ASAP Marine Agency</p>
-            <p style="margin-top: 15px; font-size: 0.85em;">
-                If you no longer wish to receive emails, reply with <strong>UNSUBSCRIBE</strong>.
-            </p>
-        </div>
+    <div class="mail-shell">
+        <table role="presentation" width="100%" class="mail-container">
+            <tr>
+                <td class="header">
+                    <div class="header-logo">
+                        <span class="brand-logo"><span class="brand-logo-accent">ASAP</span> Marine Crew</span>
+                    </div>
+                    <h1 class="subject">{{ cta_subject or 'ASAP Marine Update' }}</h1>
+                    <p class="subtitle">ASAP Marine Agency • Crew Opportunities</p>
+                </td>
+            </tr>
+            <tr>
+                <td class="content">
+                    {% if cta_body %}
+                    <div class="intro-card">
+                        <h2 class="intro-title">Message for Seafarers</h2>
+                        <div class="intro-body">{{ cta_body | safe }}</div>
+                    </div>
+                    {% else %}
+                    <div class="intro-card">
+                        <h2 class="intro-title">Message for Seafarers</h2>
+                        <div class="intro-body">
+                            Good day, Seafarers!<br><br>
+                            This is <strong>ASAP Marine Agency</strong> from Odesa, Ukraine.
+                        </div>
+                        <div class="cta-box">
+                            Stay updated with urgent vacancies and latest openings.
+                            <br>
+                            <a class="cta-link" href="https://t.me/asapcrewing">Join our Telegram channel</a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if vacancies %}
+                    <div class="vacancies-wrap">
+                        <h2 class="vacancies-title">Current Open Positions</h2>
+                        <div class="vacancies-body">{{ vacancies | safe }}</div>
+                    </div>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td class="footer">
+                    <strong>Best regards,</strong><br>
+                    ASAP Marine Agency<br><br>
+                    If you no longer wish to receive emails, reply with <strong>UNSUBSCRIBE</strong>.
+                </td>
+            </tr>
+        </table>
     </div>
 </body>
 </html>
-

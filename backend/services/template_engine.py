@@ -3,6 +3,7 @@ from jinja2 import Environment, FileSystemLoader, Template
 from typing import Dict, Any
 import os
 import re
+import html
 
 
 class TemplateEngine:
@@ -93,15 +94,39 @@ class TemplateEngine:
         """
         if not plain_text:
             return ""
-        
-        # Preserve line breaks
-        html = plain_text.strip()
-        # Convert double newlines to paragraph breaks
-        html = re.sub(r'\n\n+', '</div><div class="vacancy-block">', html)
-        # Convert single newlines to <br>
-        html = html.replace('\n', '<br>')
-        
-        return html
+
+        text = plain_text.strip().replace('\r\n', '\n').replace('\r', '\n')
+        blocks = [b.strip() for b in re.split(r'\n\s*\n+', text) if b.strip()]
+        if not blocks:
+            return ""
+
+        rendered_blocks = []
+        for block in blocks:
+            safe_block = html.escape(block).replace('\n', '<br>')
+            rendered_blocks.append(f'<div class="vacancy-block">{safe_block}</div>')
+
+        return ''.join(rendered_blocks)
+
+    def normalize_cta_body(self, cta_body: str) -> str:
+        """
+        Normalize CTA body to keep rendering style consistent.
+
+        If HTML tags are present, keep as-is. Otherwise escape and preserve line breaks.
+        """
+        if not cta_body:
+            return ""
+
+        body = cta_body.strip()
+        if not body:
+            return ""
+
+        has_html_tag = bool(re.search(r'<\s*[a-zA-Z][^>]*>', body))
+        if has_html_tag:
+            return body
+
+        safe = html.escape(body)
+        safe = self._linkify_urls(safe)
+        return safe.replace('\n', '<br>')
     
     def render(
         self,
@@ -127,10 +152,12 @@ class TemplateEngine:
         # Wrap vacancies if provided
         vacancies_html = self.wrap_vacancies(vacancies_text) if vacancies_text else ""
         
+        normalized_cta_body = self.normalize_cta_body(cta_body)
+
         return template.render(
             vacancies=vacancies_html,
             cta_subject=cta_subject,
-            cta_body=cta_body
+            cta_body=normalized_cta_body
         )
     
     def render_from_dict(self, context: Dict[str, Any], template_name: str = 'template.html') -> str:
@@ -151,4 +178,7 @@ class TemplateEngine:
             context['vacancies'] = self.wrap_vacancies(context['vacancies'])
         
         return template.render(**context)
-
+    def _linkify_urls(self, text: str) -> str:
+        """Convert plain URLs to clickable links in already-escaped text."""
+        url_pattern = re.compile(r'(https?://[^\s<]+)')
+        return url_pattern.sub(r'<a href="\1">\1</a>', text)

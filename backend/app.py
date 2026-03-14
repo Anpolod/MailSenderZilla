@@ -1,4 +1,5 @@
 """Flask application bootstrap for MailSenderZilla."""
+import fcntl
 import logging
 import os
 import re
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 _bootstrapped = False
+_campaign_recovery_lock_fd = None
 
 
 def _to_bool(value: str, default: bool = False) -> bool:
@@ -174,6 +176,82 @@ def is_campaign_task_active(campaign_id: int) -> bool:
         return True
 
 
+def _submit_campaign_future(campaign_id: int, html_body: Optional[str], provider_config: dict, vacancies_text: str):
+    """Submit one campaign into executor and track its future."""
+    service = CampaignService(log_callback=log_callback)
+    future = executor.submit(
+        service.run_campaign,
+        campaign_id,
+        html_body,
+        provider_config,
+        vacancies_text or ''
+    )
+    register_campaign_task(campaign_id, future)
+    return future
+
+
+def _try_resume_running_campaigns_after_restart() -> None:
+    """Resume stale running campaigns after a process restart.
+
+    Only one worker process should perform recovery. A filesystem lock keeps
+    recovery single-owner across gunicorn workers and worker respawns.
+    """
+    global _campaign_recovery_lock_fd
+    if _campaign_recovery_lock_fd is not None:
+        return
+
+    lock_path = os.path.join(PROJECT_ROOT, '.campaign_recovery.lock')
+    lock_fd = open(lock_path, 'w')
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock_fd.close()
+        logger.info('Campaign recovery lock is already held by another worker; skipping auto-resume.')
+        return
+
+    _campaign_recovery_lock_fd = lock_fd
+    logger.info('Campaign recovery lock acquired; scanning for stale running campaigns.')
+
+    session = get_session()
+    try:
+        stale_campaigns = session.query(Campaign).filter_by(status='running').order_by(Campaign.id.asc()).all()
+        for campaign in stale_campaigns:
+            if is_campaign_task_active(campaign.id):
+                continue
+
+            provider_config = _get_provider_config_from_settings(session, campaign.provider)
+            html_body = getattr(campaign, 'html_body', None)
+            vacancies_text = getattr(campaign, 'vacancies_text', None) or ''
+
+            if not provider_config:
+                logger.warning(
+                    f"Campaign {campaign.id} left in running state after restart, but provider credentials are missing. "
+                    "Switching to paused."
+                )
+                campaign.status = 'paused'
+                session.commit()
+                continue
+
+            if not html_body and not vacancies_text:
+                logger.warning(
+                    f"Campaign {campaign.id} left in running state after restart, but email content is missing. "
+                    "Switching to paused."
+                )
+                campaign.status = 'paused'
+                session.commit()
+                continue
+
+            try:
+                _submit_campaign_future(campaign.id, html_body, provider_config, vacancies_text)
+                logger.info(f'Campaign {campaign.id} auto-resumed after service restart.')
+            except Exception as exc:
+                logger.error(f'Failed to auto-resume campaign {campaign.id}: {exc}\n{traceback.format_exc()}')
+                campaign.status = 'failed'
+                session.commit()
+    finally:
+        session.close()
+
+
 def _extract_valid_total_from_logs(log_rows) -> Optional[int]:
     """Parse total valid recipients from campaign start log."""
     for row in log_rows:
@@ -244,6 +322,8 @@ def bootstrap_application() -> None:
             getattr(module, fn_name)()
         except Exception as e:
             logger.warning(f"{warning_prefix}: {e}")
+
+    _try_resume_running_campaigns_after_restart()
 
     _bootstrapped = True
 
@@ -567,21 +647,11 @@ def start_campaign(campaign_id):
         if not html_body and not vacancies_text:
             logger.warning(f"Campaign {campaign_id}: No email content found (neither html_body nor vacancies_text)")
         
-        # Create campaign service and start campaign
-        service = CampaignService(log_callback=log_callback)
-        
         logger.info(f"Manually starting campaign {campaign_id}: {campaign.name}")
         try:
             campaign.status = 'running'
             session.commit()
-            future = executor.submit(
-                service.run_campaign,
-                campaign_id,
-                html_body,
-                provider_config,
-                vacancies_text
-            )
-            register_campaign_task(campaign_id, future)
+            _submit_campaign_future(campaign_id, html_body, provider_config, vacancies_text)
             logger.info(f"Campaign {campaign_id} submitted to executor successfully")
             return jsonify({'success': True, 'message': 'Campaign started successfully'})
         except Exception as e:
@@ -589,6 +659,7 @@ def start_campaign(campaign_id):
             # Update campaign status to failed
             campaign.status = 'failed'
             session.commit()
+            service = CampaignService(log_callback=log_callback)
             service._log(campaign_id, 'ERROR', f'Failed to start campaign: {str(e)}')
             return jsonify({'success': False, 'error': f'Failed to start campaign: {str(e)}'}), 500
             
@@ -667,17 +738,8 @@ def resume_campaign(campaign_id):
         campaign.status = 'running'
         session.commit()
         
-        # Create campaign service and resume
-        service = CampaignService(log_callback=log_callback)
         try:
-            future = executor.submit(
-                service.run_campaign,
-                campaign_id,
-                html_body,
-                provider_config,
-                vacancies_text
-            )
-            register_campaign_task(campaign_id, future)
+            _submit_campaign_future(campaign_id, html_body, provider_config, vacancies_text)
             logger.info(f"Campaign {campaign_id} resumed successfully")
             return jsonify({'success': True, 'message': 'Campaign resumed successfully'})
         except Exception as e:
@@ -799,16 +861,8 @@ def restart_campaign(campaign_id):
         # Try to restart if we have provider config and email content
         if provider_config and (html_body or vacancies_text):
             # Create campaign service and restart
-            service = CampaignService(log_callback=log_callback)
             try:
-                future = executor.submit(
-                    service.run_campaign,
-                    campaign_id,
-                    html_body,
-                    provider_config,
-                    vacancies_text
-                )
-                register_campaign_task(campaign_id, future)
+                _submit_campaign_future(campaign_id, html_body, provider_config, vacancies_text)
                 logger.info(f"Campaign {campaign_id} restarted successfully")
                 return jsonify({'success': True, 'message': 'Campaign restarted successfully'})
             except Exception as e:

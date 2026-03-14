@@ -49,6 +49,7 @@ MailSenderZilla/
 ## Installation
 
 For a full development/production workflow with `gunicorn + systemd + nginx`, see [DEPLOYMENT.md](DEPLOYMENT.md).
+For GitHub Actions CI/CD setup, see [deploy/GITHUB_ACTIONS_CICD.md](deploy/GITHUB_ACTIONS_CICD.md).
 Ukrainian full project documentation: [PROJECT_DOCS_UA.md](PROJECT_DOCS_UA.md).
 English full project documentation: [PROJECT_DOCS_EN.md](PROJECT_DOCS_EN.md).
 API interactive docs (Swagger UI): `/api/docs` (OpenAPI JSON: `/api/openapi.json`).

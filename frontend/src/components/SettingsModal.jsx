@@ -8,6 +8,11 @@ function SettingsModal({ isOpen, onClose, onSave }) {
     telegram_bot_token: '',
     telegram_chat_id: '',
   });
+  const [configured, setConfigured] = useState({
+    has_mailersend_api_token: false,
+    has_gmail_app_password: false,
+    has_telegram_bot_token: false,
+  });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -32,10 +37,15 @@ function SettingsModal({ isOpen, onClose, onSave }) {
     try {
       const data = await getSettings();
       setSettings({
-        mailersend_api_token: data.mailersend_api_token || '',
-        gmail_app_password: data.gmail_app_password || '',
-        telegram_bot_token: data.telegram_bot_token || '',
+        mailersend_api_token: '',
+        gmail_app_password: '',
+        telegram_bot_token: '',
         telegram_chat_id: data.telegram_chat_id || '',
+      });
+      setConfigured({
+        has_mailersend_api_token: Boolean(data.has_mailersend_api_token),
+        has_gmail_app_password: Boolean(data.has_gmail_app_password),
+        has_telegram_bot_token: Boolean(data.has_telegram_bot_token),
       });
     } catch (err) {
       setError('Failed to load settings: ' + err.message);
@@ -131,11 +141,25 @@ function SettingsModal({ isOpen, onClose, onSave }) {
     setSuccess('');
 
     try {
-      const result = await updateSettings(settings);
+      const payload = {
+        telegram_chat_id: settings.telegram_chat_id,
+      };
+
+      if (settings.mailersend_api_token) {
+        payload.mailersend_api_token = settings.mailersend_api_token;
+      }
+      if (settings.gmail_app_password) {
+        payload.gmail_app_password = settings.gmail_app_password;
+      }
+      if (settings.telegram_bot_token) {
+        payload.telegram_bot_token = settings.telegram_bot_token;
+      }
+
+      const result = await updateSettings(payload);
       if (result.success) {
         setSuccess('Settings saved successfully!');
         if (onSave) {
-          onSave(settings);
+          onSave(payload);
         }
         setTimeout(() => {
           onClose();
@@ -196,6 +220,9 @@ function SettingsModal({ isOpen, onClose, onSave }) {
                     onChange={handleChange}
                     placeholder="mlsn.xxxxx"
                   />
+                  {configured.has_mailersend_api_token && (
+                    <small className="form-help">A MailerSend API token is already saved. Enter a new value only to replace it.</small>
+                  )}
                   <small className="form-help">Your MailerSend API token. Will be used when creating campaigns with MailerSend provider.</small>
                 </div>
 
@@ -209,6 +236,9 @@ function SettingsModal({ isOpen, onClose, onSave }) {
                     onChange={handleChange}
                     placeholder="16-character app password"
                   />
+                  {configured.has_gmail_app_password && (
+                    <small className="form-help">A Gmail App Password is already saved. Enter a new value only to replace it.</small>
+                  )}
                   <small className="form-help">Your Gmail App Password. Will be used when creating campaigns with Gmail provider.</small>
                 </div>
               </div>
@@ -226,6 +256,9 @@ function SettingsModal({ isOpen, onClose, onSave }) {
                     onChange={handleChange}
                     placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
                   />
+                  {configured.has_telegram_bot_token && (
+                    <small className="form-help">A Telegram bot token is already saved. Enter a new value only to replace it.</small>
+                  )}
                 </div>
 
                 <div className="form-group">

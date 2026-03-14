@@ -32,23 +32,23 @@ function CampaignForm() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [useSavedCredentials, setUseSavedCredentials] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [savedCredentials, setSavedCredentials] = useState({
+    has_mailersend_api_token: false,
+    has_gmail_app_password: false,
+  });
 
-  // Load saved credentials from settings on mount
+  // Load saved credential availability on mount
   useEffect(() => {
-    loadSavedCredentials();
+    loadSettingsSummary();
   }, []);
 
-  const loadSavedCredentials = async () => {
+  const loadSettingsSummary = async () => {
     try {
       const settings = await getSettings();
-      if (settings.mailersend_api_token || settings.gmail_app_password) {
-        setFormData(prev => ({
-          ...prev,
-          api_token: settings.mailersend_api_token || prev.api_token,
-          app_password: settings.gmail_app_password || prev.app_password,
-        }));
-        setUseSavedCredentials(true);
-      }
+      setSavedCredentials({
+        has_mailersend_api_token: Boolean(settings.has_mailersend_api_token),
+        has_gmail_app_password: Boolean(settings.has_gmail_app_password),
+      });
     } catch (err) {
       console.error('Failed to load settings:', err);
     }
@@ -134,25 +134,13 @@ function CampaignForm() {
     }
 
     // Validate provider config - load from settings if using saved credentials
-    let finalApiToken = formData.api_token;
-    let finalAppPassword = formData.app_password;
-
     if (formData.provider === 'mailersend') {
-      if (useSavedCredentials && !finalApiToken) {
-        try {
-          const settings = await getSettings();
-          finalApiToken = settings.mailersend_api_token;
-          if (!finalApiToken) {
-            setError('MailerSend API token is required. Please enter it or save it in Settings.');
-            setSubmitting(false);
-            return;
-          }
-        } catch (err) {
-          setError('Failed to load saved credentials. Please enter API token manually.');
-          setSubmitting(false);
-          return;
-        }
-      } else if (!useSavedCredentials && !finalApiToken) {
+      if (useSavedCredentials && !savedCredentials.has_mailersend_api_token) {
+        setError('Saved MailerSend API token not found. Enter it manually or save it in Settings.');
+        setSubmitting(false);
+        return;
+      }
+      if (!useSavedCredentials && !formData.api_token) {
         setError('MailerSend API token is required');
         setSubmitting(false);
         return;
@@ -160,21 +148,12 @@ function CampaignForm() {
     }
 
     if (formData.provider === 'gmail') {
-      if (useSavedCredentials && !finalAppPassword) {
-        try {
-          const settings = await getSettings();
-          finalAppPassword = settings.gmail_app_password;
-          if (!finalAppPassword) {
-            setError('Gmail App Password is required. Please enter it or save it in Settings.');
-            setSubmitting(false);
-            return;
-          }
-        } catch (err) {
-          setError('Failed to load saved credentials. Please enter App Password manually.');
-          setSubmitting(false);
-          return;
-        }
-      } else if (!useSavedCredentials && !finalAppPassword) {
+      if (useSavedCredentials && !savedCredentials.has_gmail_app_password) {
+        setError('Saved Gmail App Password not found. Enter it manually or save it in Settings.');
+        setSubmitting(false);
+        return;
+      }
+      if (!useSavedCredentials && !formData.app_password) {
         setError('Gmail App Password is required');
         setSubmitting(false);
         return;
@@ -182,11 +161,6 @@ function CampaignForm() {
     }
 
     try {
-      // Build provider config
-      const provider_config = formData.provider === 'mailersend'
-        ? { api_token: finalApiToken }
-        : { app_password: finalAppPassword };
-
       // Build campaign payload
       const campaignData = {
         name: formData.name,
@@ -197,10 +171,15 @@ function CampaignForm() {
         batch_size: parseInt(formData.batch_size) || 1,
         delay_between_batches: parseInt(formData.delay_between_batches) || 45,
         daily_limit: parseInt(formData.daily_limit) || 2000,
-        provider_config,
         vacancies_text: formData.vacancies_text || '',
         html_body: null,
       };
+
+      if (!useSavedCredentials) {
+        campaignData.provider_config = formData.provider === 'mailersend'
+          ? { api_token: formData.api_token }
+          : { app_password: formData.app_password };
+      }
 
       // Add data source
       if (dataSource === 'csv') {
@@ -337,9 +316,6 @@ function CampaignForm() {
                         checked={useSavedCredentials}
                         onChange={(e) => {
                           setUseSavedCredentials(e.target.checked);
-                          if (e.target.checked) {
-                            loadSavedCredentials();
-                          }
                         }}
                       />
                       Use saved credentials
@@ -355,8 +331,8 @@ function CampaignForm() {
                     placeholder="mlsn.xxxxx"
                     disabled={useSavedCredentials}
                   />
-                  {useSavedCredentials && formData.api_token && (
-                    <small className="form-help">Using saved MailerSend API token from settings</small>
+                  {useSavedCredentials && savedCredentials.has_mailersend_api_token && (
+                    <small className="form-help">Using saved MailerSend API token from backend settings</small>
                   )}
                 </div>
               )}
@@ -371,9 +347,6 @@ function CampaignForm() {
                         checked={useSavedCredentials}
                         onChange={(e) => {
                           setUseSavedCredentials(e.target.checked);
-                          if (e.target.checked) {
-                            loadSavedCredentials();
-                          }
                         }}
                       />
                       Use saved credentials
@@ -389,8 +362,8 @@ function CampaignForm() {
                     placeholder="16-character app password"
                     disabled={useSavedCredentials}
                   />
-                  {useSavedCredentials && formData.app_password && (
-                    <small className="form-help">Using saved Gmail App Password from settings</small>
+                  {useSavedCredentials && savedCredentials.has_gmail_app_password && (
+                    <small className="form-help">Using saved Gmail App Password from backend settings</small>
                   )}
                 </div>
               )}

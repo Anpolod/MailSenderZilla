@@ -1,19 +1,20 @@
 """Flask application bootstrap for MailSenderZilla."""
-from flask import Flask, request, jsonify, send_from_directory
-from flask_socketio import SocketIO, emit
-from flask_cors import CORS
-import os
-import uuid
-import re
 import logging
-import traceback
+import os
+import re
 import threading
-from urllib.parse import unquote
-from datetime import datetime
+import traceback
+import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
-from werkzeug.utils import secure_filename
+from urllib.parse import unquote
+
 from dotenv import load_dotenv
+from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask_cors import CORS
+from werkzeug.utils import secure_filename
 
 # Set up logging
 logging.basicConfig(
@@ -54,12 +55,20 @@ def load_environment() -> str:
 
     return os.getenv('APP_ENV', app_env).strip().lower()
 
-from backend.models.database import init_db, get_session, Campaign, Log, Settings, Blacklist, Template
+
+APP_ENV = load_environment()
+
+from backend.models.database import init_db, get_session, Campaign, Settings, Blacklist, Template
 from backend.services.campaign_service import CampaignService
 from backend.services.template_engine import TemplateEngine
+from backend.utils.campaign_logs import (
+    delete_campaign_log_file,
+    ensure_campaign_log_dir,
+    get_campaign_log_path,
+    read_campaign_log_lines,
+)
 from backend.utils.database import get_all_tables, get_table_columns, preview_table_emails, detect_email_column
 from backend.utils.export import (
-    export_logs_to_csv, 
     export_sent_emails_to_csv, 
     export_failed_emails_to_csv,
     export_all_emails_to_csv,
@@ -76,9 +85,6 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-pro
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
 
-# Initialize SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-
 # Enable CORS
 CORS(app)
 
@@ -87,8 +93,59 @@ executor = ThreadPoolExecutor(max_workers=5)
 campaign_task_lock = threading.Lock()
 campaign_tasks = {}
 
-# Campaign log callbacks (campaign_id -> socketio room)
-campaign_log_rooms = {}
+def _uploads_dir() -> Path:
+    """Return canonical uploads directory."""
+    return Path(app.config['UPLOAD_FOLDER']).resolve()
+
+
+def _serialize_settings(settings_rows) -> dict:
+    """Return safe settings payload without exposing stored secrets."""
+    values = {row.key: row.value for row in settings_rows}
+    return {
+        'telegram_chat_id': values.get('telegram_chat_id', ''),
+        'has_mailersend_api_token': bool(values.get('mailersend_api_token')),
+        'has_gmail_app_password': bool(values.get('gmail_app_password')),
+        'has_telegram_bot_token': bool(values.get('telegram_bot_token')),
+    }
+
+
+def _resolve_uploaded_csv(csv_reference: str) -> Path:
+    """Resolve uploaded CSV token/filename into uploads directory."""
+    if not csv_reference:
+        raise ValueError('CSV file reference is required')
+
+    uploads_dir = _uploads_dir()
+    candidate = Path(csv_reference)
+    filename = secure_filename(candidate.name)
+    if not filename:
+        raise ValueError('Invalid CSV file reference')
+
+    resolved = (uploads_dir / filename).resolve()
+    try:
+        resolved.relative_to(uploads_dir)
+    except ValueError as exc:
+        raise ValueError('CSV file is outside the uploads directory') from exc
+
+    if not resolved.exists():
+        raise ValueError('Uploaded CSV file not found')
+
+    if resolved.suffix.lower() != '.csv':
+        raise ValueError('Uploaded file must be a CSV')
+
+    return resolved
+
+
+def _get_provider_config_from_settings(session, provider: str) -> Optional[dict]:
+    """Load provider credentials from persisted settings."""
+    if provider == 'mailersend':
+        mailersend_token = session.query(Settings).filter_by(key='mailersend_api_token').first()
+        if mailersend_token and mailersend_token.value:
+            return {'api_token': mailersend_token.value}
+    elif provider == 'gmail':
+        gmail_password = session.query(Settings).filter_by(key='gmail_app_password').first()
+        if gmail_password and gmail_password.value:
+            return {'app_password': gmail_password.value}
+    return None
 
 
 def register_campaign_task(campaign_id: int, future) -> None:
@@ -120,7 +177,7 @@ def is_campaign_task_active(campaign_id: int) -> bool:
 def _extract_valid_total_from_logs(log_rows) -> Optional[int]:
     """Parse total valid recipients from campaign start log."""
     for row in log_rows:
-        msg = row.message or ''
+        msg = row.get('message', '') if isinstance(row, dict) else (row.message or '')
         match = re.search(r'Valid:\s*(\d+)', msg)
         if match:
             return int(match.group(1))
@@ -135,33 +192,35 @@ def _extract_sent_count_from_success_log(message: str) -> int:
     return int(match.group(1))
 
 
-@socketio.on('connect')
-def handle_connect():
-    """Handle WebSocket connection."""
-    emit('connected', {'message': 'Connected to MailSenderZilla'})
+def _get_campaign_log_stats(campaign_id: int) -> tuple[Optional[int], int]:
+    """Read campaign log file and derive basic stats for the dashboard."""
+    lines = read_campaign_log_lines(campaign_id)
+    total_recipients = _extract_valid_total_from_logs(lines)
 
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    sent_today = 0
+    for row in lines:
+        if row.get('level') != 'SUCCESS':
+            continue
 
-@socketio.on('join_campaign')
-def handle_join_campaign(data):
-    """Join campaign log room."""
-    from flask_socketio import join_room
-    campaign_id = data.get('campaign_id')
-    if campaign_id:
-        room = f'campaign_{campaign_id}'
-        join_room(room)
-        campaign_log_rooms[campaign_id] = True
-        emit('joined', {'campaign_id': campaign_id})
+        ts_raw = row.get('timestamp')
+        if ts_raw:
+            try:
+                ts = datetime.strptime(ts_raw, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                ts = None
+        else:
+            ts = None
+
+        if ts is not None and ts >= today_start:
+            sent_today += _extract_sent_count_from_success_log(row.get('message', ''))
+
+    return total_recipients, sent_today
 
 
 def log_callback(campaign_id: int, level: str, message: str):
-    """Callback for campaign logs - emits to WebSocket."""
-    room = f'campaign_{campaign_id}'
-    socketio.emit('campaign_log', {
-        'campaign_id': campaign_id,
-        'level': level,
-        'message': message,
-        'timestamp': datetime.utcnow().isoformat()
-    }, room=room)
+    """Campaign log callback placeholder."""
+    return None
 
 
 def bootstrap_application() -> None:
@@ -171,6 +230,7 @@ def bootstrap_application() -> None:
         return
 
     init_db()
+    ensure_campaign_log_dir()
     migrations = [
         ('backend.migrate_add_database_table', 'migrate_add_database_table', 'Migration check failed'),
         ('backend.migrate_add_email_content', 'migrate_add_email_content', 'Email content migration check failed'),
@@ -194,8 +254,7 @@ def get_settings():
     session = get_session()
     try:
         settings = session.query(Settings).all()
-        result = {s.key: s.value for s in settings}
-        return jsonify(result)
+        return jsonify(_serialize_settings(settings))
     finally:
         session.close()
 
@@ -203,10 +262,13 @@ def get_settings():
 @app.route('/api/settings', methods=['PUT'])
 def update_settings():
     """Update application settings."""
-    data = request.json
+    data = request.json or {}
+    secret_keys = {'mailersend_api_token', 'gmail_app_password', 'telegram_bot_token'}
     session = get_session()
     try:
         for key, value in data.items():
+            if key in secret_keys and (value is None or str(value) == ''):
+                continue
             setting = session.query(Settings).filter_by(key=key).first()
             if setting:
                 setting.value = str(value)
@@ -228,32 +290,10 @@ def list_campaigns():
     session = get_session()
     try:
         campaigns = session.query(Campaign).order_by(Campaign.start_ts.desc()).all()
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         result = []
         for c in campaigns:
             try:
-                start_logs = (
-                    session.query(Log.message)
-                    .filter(
-                        Log.campaign_id == c.id,
-                        Log.level == 'INFO',
-                        Log.message.like('Campaign started. Total emails:%')
-                    )
-                    .order_by(Log.ts.desc())
-                    .all()
-                )
-                total_recipients = _extract_valid_total_from_logs(start_logs)
-
-                today_success_logs = (
-                    session.query(Log.message)
-                    .filter(
-                        Log.campaign_id == c.id,
-                        Log.level == 'SUCCESS',
-                        Log.ts >= today_start
-                    )
-                    .all()
-                )
-                sent_today = sum(_extract_sent_count_from_success_log(row.message) for row in today_success_logs)
+                total_recipients, sent_today = _get_campaign_log_stats(c.id)
 
                 processed_total = (c.success_cnt or 0) + (c.error_cnt or 0)
                 remaining_total = None
@@ -292,10 +332,10 @@ def list_campaigns():
 @app.route('/api/campaigns', methods=['POST'])
 def create_campaign():
     """Create and start a new campaign."""
-    data = request.json
+    data = request.json or {}
     
     # Validate required fields
-    required = ['name', 'provider', 'subject', 'sender_email', 'provider_config']
+    required = ['name', 'provider', 'subject', 'sender_email']
     for field in required:
         if field not in data:
             return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
@@ -309,9 +349,26 @@ def create_campaign():
     
     # Create campaign
     try:
+        provider_config = data.get('provider_config')
+        if not provider_config:
+            session = get_session()
+            try:
+                provider_config = _get_provider_config_from_settings(session, data['provider'])
+            finally:
+                session.close()
+
+        if not provider_config:
+            return jsonify({
+                'success': False,
+                'error': 'Provider credentials required. Please provide provider_config or save credentials in Settings.'
+            }), 400
+
         # Get email content
         html_body = data.get('html_body')
         vacancies_text = data.get('vacancies_text', '')
+        csv_path = data.get('csv_path')
+        if csv_path:
+            csv_path = str(_resolve_uploaded_csv(csv_path))
         
         # Log content saving
         if html_body:
@@ -324,7 +381,7 @@ def create_campaign():
             provider=data['provider'],
             subject=data['subject'],
             sender_email=data['sender_email'],
-            csv_path=data.get('csv_path'),
+            csv_path=csv_path,
             database_table=data.get('database_table'),
             email_column=data.get('email_column'),
             batch_size=data.get('batch_size', 1),
@@ -332,7 +389,7 @@ def create_campaign():
             daily_limit=data.get('daily_limit', 2000),
             html_body=html_body,
             vacancies_text=vacancies_text,
-            provider_config=data['provider_config']
+            provider_config=provider_config
         )
         
         logger.info(f"Campaign {campaign_id} created and content saved")
@@ -343,11 +400,21 @@ def create_campaign():
         logger.info(f"Campaign {campaign_id}: Provider={data['provider']}, Data Source={'database_table' if data.get('database_table') else 'csv_path'}")
         
         try:
+            session = get_session()
+            try:
+                campaign = session.query(Campaign).filter_by(id=campaign_id).first()
+                if not campaign:
+                    raise ValueError('Campaign not found right after creation')
+                campaign.status = 'running'
+                session.commit()
+            finally:
+                session.close()
+
             future = executor.submit(
                 service.run_campaign,
                 campaign_id,
                 html_body,
-                data['provider_config'],
+                provider_config,
                 vacancies_text
             )
             register_campaign_task(campaign_id, future)
@@ -402,11 +469,12 @@ def get_campaign(campaign_id):
             'batch_size': campaign.batch_size,
             'delay_between_batches': campaign.delay_between_batches,
             'daily_limit': campaign.daily_limit,
-            'csv_path': getattr(campaign, 'csv_path', None),
+            'csv_path': os.path.basename(campaign.csv_path) if getattr(campaign, 'csv_path', None) else None,
             'database_table': database_table,
             'email_column': getattr(campaign, 'email_column', 'email'),
             'html_body': getattr(campaign, 'html_body', None),
-            'vacancies_text': getattr(campaign, 'vacancies_text', None)
+            'vacancies_text': getattr(campaign, 'vacancies_text', None),
+            'log_path': str(get_campaign_log_path(campaign.id))
         })
     finally:
         session.close()
@@ -414,19 +482,34 @@ def get_campaign(campaign_id):
 
 @app.route('/api/campaigns/<int:campaign_id>/logs', methods=['GET'])
 def get_campaign_logs(campaign_id):
-    """Get campaign logs."""
-    session = get_session()
-    try:
-        logs = session.query(Log).filter_by(campaign_id=campaign_id).order_by(Log.ts.asc()).all()
-        result = [{
-            'id': l.id,
-            'ts': l.ts.isoformat(),
-            'level': l.level,
-            'message': l.message
-        } for l in logs]
-        return jsonify(result)
-    finally:
-        session.close()
+    """Get tail of campaign log file."""
+    limit = request.args.get('limit', default=200, type=int)
+    result = read_campaign_log_lines(campaign_id, limit=max(1, min(limit, 2000)))
+    return jsonify(result)
+
+
+@app.route('/api/campaigns/<int:campaign_id>/log-file', methods=['GET'])
+def get_campaign_log_file_info(campaign_id):
+    """Return campaign log file metadata."""
+    path = get_campaign_log_path(campaign_id)
+    exists = path.exists()
+    stat = path.stat() if exists else None
+    return jsonify({
+        'success': True,
+        'path': str(path),
+        'exists': exists,
+        'size_bytes': stat.st_size if stat else 0,
+        'updated_at': datetime.utcfromtimestamp(stat.st_mtime).isoformat() if stat else None,
+    })
+
+
+@app.route('/api/campaigns/<int:campaign_id>/log-download', methods=['GET'])
+def download_campaign_log_file(campaign_id):
+    """Download campaign log file."""
+    path = get_campaign_log_path(campaign_id)
+    if not path.exists():
+        return jsonify({'success': False, 'error': 'Campaign log file not found'}), 404
+    return send_file(path, mimetype='text/plain', as_attachment=True, download_name=path.name)
 
 
 @app.route('/api/campaigns/<int:campaign_id>/html', methods=['GET'])
@@ -466,15 +549,7 @@ def start_campaign(campaign_id):
         provider_config = data.get('provider_config')
         
         if not provider_config:
-            # Try to get from settings
-            if campaign.provider == 'mailersend':
-                mailersend_token = session.query(Settings).filter_by(key='mailersend_api_token').first()
-                if mailersend_token and mailersend_token.value:
-                    provider_config = {'api_token': mailersend_token.value}
-            elif campaign.provider == 'gmail':
-                gmail_password = session.query(Settings).filter_by(key='gmail_app_password').first()
-                if gmail_password and gmail_password.value:
-                    provider_config = {'app_password': gmail_password.value}
+            provider_config = _get_provider_config_from_settings(session, campaign.provider)
         
         if not provider_config:
             return jsonify({
@@ -496,6 +571,8 @@ def start_campaign(campaign_id):
         
         logger.info(f"Manually starting campaign {campaign_id}: {campaign.name}")
         try:
+            campaign.status = 'running'
+            session.commit()
             future = executor.submit(
                 service.run_campaign,
                 campaign_id,
@@ -567,15 +644,7 @@ def resume_campaign(campaign_id):
         provider_config = data.get('provider_config')
         
         if not provider_config:
-            # Try to get from settings
-            if campaign.provider == 'mailersend':
-                mailersend_token = session.query(Settings).filter_by(key='mailersend_api_token').first()
-                if mailersend_token and mailersend_token.value:
-                    provider_config = {'api_token': mailersend_token.value}
-            elif campaign.provider == 'gmail':
-                gmail_password = session.query(Settings).filter_by(key='gmail_app_password').first()
-                if gmail_password and gmail_password.value:
-                    provider_config = {'app_password': gmail_password.value}
+            provider_config = _get_provider_config_from_settings(session, campaign.provider)
         
         if not provider_config:
             return jsonify({
@@ -695,14 +764,7 @@ def restart_campaign(campaign_id):
             session.commit()
         
         # Get provider config from settings
-        if campaign.provider == 'mailersend':
-            mailersend_token = session.query(Settings).filter_by(key='mailersend_api_token').first()
-            provider_config = {'api_token': mailersend_token.value} if mailersend_token and mailersend_token.value else None
-        elif campaign.provider == 'gmail':
-            gmail_password = session.query(Settings).filter_by(key='gmail_app_password').first()
-            provider_config = {'app_password': gmail_password.value} if gmail_password and gmail_password.value else None
-        else:
-            provider_config = None
+        provider_config = _get_provider_config_from_settings(session, campaign.provider)
         
         if not provider_config:
             # Reset campaign status only if no saved credentials
@@ -764,16 +826,12 @@ def restart_campaign(campaign_id):
 
 @app.route('/api/campaigns/<int:campaign_id>/export/logs', methods=['GET'])
 def export_campaign_logs(campaign_id):
-    """Export campaign logs to CSV."""
+    """Export campaign log file."""
     try:
-        csv_content = export_logs_to_csv(campaign_id)
-        if not csv_content:
-            return jsonify({'success': False, 'error': 'Campaign not found or no logs'}), 404
-        
-        from flask import Response
-        response = Response(csv_content, mimetype='text/csv')
-        response.headers['Content-Disposition'] = f'attachment; filename=campaign_{campaign_id}_logs.csv'
-        return response
+        path = get_campaign_log_path(campaign_id)
+        if not path.exists():
+            return jsonify({'success': False, 'error': 'Campaign log file not found'}), 404
+        return send_file(path, mimetype='text/plain', as_attachment=True, download_name=path.name)
     except Exception as e:
         logger.error(f"Failed to export logs for campaign {campaign_id}: {e}\n{traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -865,6 +923,7 @@ def delete_campaign(campaign_id):
         # Delete campaign (logs will be cascade deleted due to relationship)
         session.delete(campaign)
         session.commit()
+        delete_campaign_log_file(campaign_id)
         
         return jsonify({'success': True, 'message': 'Campaign deleted successfully'})
     except Exception as e:
@@ -895,7 +954,7 @@ def upload_csv():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     
-    return jsonify({'success': True, 'path': filepath, 'filename': filename})
+    return jsonify({'success': True, 'file_token': filename, 'filename': filename})
 
 
 @app.route('/api/blacklist', methods=['GET'])
@@ -1144,7 +1203,7 @@ def list_db_backups():
 def restore_db_backup():
     """Restore database from backup."""
     data = request.json
-    backup_path = unquote(data.get('path', ''))
+    backup_path = unquote(data.get('path') or data.get('filename', ''))
     
     if not backup_path:
         return jsonify({'success': False, 'error': 'Backup path is required'}), 400
@@ -1643,18 +1702,15 @@ def serve_react_app(path):
 
 
 if __name__ == '__main__':
-    app_env = load_environment()
+    app_env = APP_ENV
     bootstrap_application()
 
     default_debug = app_env == 'development'
     debug_mode = _to_bool(os.getenv('MAILSENDER_DEBUG'), default=default_debug)
-    allow_unsafe_werkzeug = _to_bool(os.getenv('ALLOW_UNSAFE_WERKZEUG'), default=True)
 
-    socketio.run(
-        app,
+    app.run(
         host=os.getenv('HOST', '0.0.0.0'),
         port=int(os.getenv('PORT', '5000')),
         debug=debug_mode,
-        use_reloader=debug_mode,
-        allow_unsafe_werkzeug=allow_unsafe_werkzeug
+        use_reloader=debug_mode
     )

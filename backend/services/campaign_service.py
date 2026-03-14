@@ -1,4 +1,5 @@
 """Campaign service for managing email campaigns."""
+import os
 import pandas as pd
 import re
 import json
@@ -6,9 +7,10 @@ import logging
 import traceback
 from datetime import datetime
 from typing import List, Dict, Any, Callable, Optional, Tuple
-from backend.models.database import get_session, Campaign, Log, Blacklist, Settings
+from backend.models.database import get_session, Campaign, Blacklist, Settings
 from backend.mailer import BaseMailer, MailerSendMailer, GmailMailer
 from backend.services.template_engine import TemplateEngine
+from backend.utils.campaign_logs import append_campaign_log
 from backend.utils.database import read_emails_from_table, read_emails_from_tables
 from backend.utils.telegram import send_telegram_message
 import time
@@ -79,6 +81,11 @@ def read_emails_from_csv(csv_path: str, email_column: str = None) -> pd.DataFram
     Returns:
         DataFrame with email addresses
     """
+    if not csv_path:
+        raise ValueError("CSV file path is required")
+    if not os.path.exists(csv_path):
+        raise ValueError(f"CSV file not found: {csv_path}")
+
     df = pd.read_csv(csv_path)
     
     # Auto-detect email column
@@ -137,28 +144,16 @@ class CampaignService:
             session.close()
     
     def _log(self, campaign_id: int, level: str, message: str):
-        """Log message to database, callback, and Telegram."""
-        session = get_session()
+        """Log message to file, optional callback, and Telegram."""
         try:
-            log_entry = Log(
-                campaign_id=campaign_id,
-                level=level,
-                message=message,
-                ts=datetime.utcnow()
-            )
-            session.add(log_entry)
-            session.commit()
+            append_campaign_log(campaign_id, level, message, datetime.utcnow())
             
-            # WebSocket callback
             if self.log_callback:
                 self.log_callback(campaign_id, level, message)
             
-            # Send to Telegram if configured
             self._send_telegram_log(campaign_id, level, message)
         except Exception as e:
             logger.error(f"Error logging for campaign {campaign_id}: {e}")
-        finally:
-            session.close()
     
     def _send_telegram_log(self, campaign_id: int, level: str, message: str):
         """Send log message to Telegram if configured."""

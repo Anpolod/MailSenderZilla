@@ -27,8 +27,22 @@ export const createCampaign = async (campaignData) => {
   return response.data;
 };
 
-export const getCampaignLogs = async (id) => {
-  const response = await api.get(`/campaigns/${id}/logs`);
+export const getCampaignLogs = async (id, limit = 200) => {
+  const response = await api.get(`/campaigns/${id}/logs`, {
+    params: { limit },
+  });
+  return response.data;
+};
+
+export const getCampaignLogFileInfo = async (id) => {
+  const response = await api.get(`/campaigns/${id}/log-file`);
+  return response.data;
+};
+
+export const downloadCampaignLogFile = async (id) => {
+  const response = await api.get(`/campaigns/${id}/log-download`, {
+    responseType: 'blob'
+  });
   return response.data;
 };
 

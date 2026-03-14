@@ -1419,6 +1419,68 @@ body {
   flex-direction: column;
 }
 
+.log-access-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  height: 100%;
+}
+
+.log-access-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.log-access-header h3 {
+  margin: 0 0 0.35rem;
+}
+
+.log-access-header p {
+  margin: 0;
+  color: var(--gray-600);
+}
+
+.log-access-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.log-access-meta {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: var(--radius);
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  color: var(--gray-700);
+  word-break: break-word;
+}
+
+.log-monitor {
+  flex: 1;
+  min-height: 360px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  background: #111827;
+  overflow: auto;
+}
+
+.log-monitor-output {
+  margin: 0;
+  padding: 1rem;
+  min-height: 100%;
+  color: #d1fae5;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .btn-start,
 .btn-pause,
 .btn-resume,

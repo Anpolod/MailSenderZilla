@@ -50,10 +50,10 @@ function CSVUploader({ onUploadSuccess, onError }) {
       const result = await uploadCSV(file);
       setUploadedFile({
         filename: result.filename,
-        path: result.path,
+        fileToken: result.file_token,
       });
       if (onUploadSuccess) {
-        onUploadSuccess(result.path, result.filename);
+        onUploadSuccess(result.file_token, result.filename);
       }
     } catch (error) {
       const errorMessage = error.response?.data?.error || error.message || 'Upload failed';

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   getCampaign, 
-  getCampaignLogs, 
   restartCampaign, 
   deleteCampaign, 
   startCampaign,
@@ -14,7 +13,7 @@ import {
   exportCampaignAll,
   exportCampaignStatistics
 } from '../services/api';
-import LogPanel from './LogPanel';
+import CampaignLogAccess from './CampaignLogAccess';
 
 function CampaignDetail() {
   const { id } = useParams();
@@ -506,7 +505,7 @@ function CampaignDetail() {
         </div>
 
         <div className="campaign-logs-section">
-          <LogPanel campaignId={parseInt(id)} />
+          <CampaignLogAccess campaignId={parseInt(id, 10)} />
         </div>
       </div>
     </div>

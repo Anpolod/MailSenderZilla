@@ -1,10 +1,11 @@
 """Utilities for exporting campaign data."""
 import csv
 import io
+import json
 import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from backend.models.database import get_session, Campaign, Log
+from backend.models.database import get_session, Campaign, CampaignDelivery, Log
 
 
 def extract_emails_from_logs(logs: List[Log]) -> Dict[str, List[str]]:
@@ -91,16 +92,12 @@ def export_sent_emails_to_csv(campaign_id: int) -> str:
         if not campaign:
             return ''
         
-        logs = session.query(Log).filter_by(campaign_id=campaign_id, level='SUCCESS').order_by(Log.ts.asc()).all()
-        
-        # Extract emails from logs
-        email_data = extract_emails_from_logs(logs)
-        sent_emails = email_data['sent']
-        
-        # If we can't extract emails from logs, try to get from source
-        if not sent_emails and campaign.success_cnt > 0:
-            # Try to read from CSV or database source
-            sent_emails = _get_emails_from_source(campaign, limit=campaign.success_cnt)
+        deliveries = (
+            session.query(CampaignDelivery)
+            .filter_by(campaign_id=campaign_id, status='sent')
+            .order_by(CampaignDelivery.sequence_no.asc())
+            .all()
+        )
         
         output = io.StringIO()
         writer = csv.writer(output)
@@ -108,18 +105,10 @@ def export_sent_emails_to_csv(campaign_id: int) -> str:
         # Header
         writer.writerow(['Email', 'Sent Date', 'Campaign ID', 'Campaign Name'])
         
-        # If we have sent emails from logs
-        for email in sent_emails:
-            # Find the log entry for this email
-            sent_date = ''
-            for log in logs:
-                if email in log.message:
-                    sent_date = log.ts.isoformat() if log.ts else ''
-                    break
-            
+        for delivery in deliveries:
             writer.writerow([
-                email,
-                sent_date,
+                delivery.email,
+                delivery.sent_ts.isoformat() if delivery.sent_ts else '',
                 campaign_id,
                 campaign.name
             ])
@@ -142,11 +131,12 @@ def export_failed_emails_to_csv(campaign_id: int) -> str:
         if not campaign:
             return ''
         
-        logs = session.query(Log).filter_by(campaign_id=campaign_id, level='ERROR').order_by(Log.ts.asc()).all()
-        
-        # Extract emails from logs
-        email_data = extract_emails_from_logs(logs)
-        failed_emails = email_data['failed']
+        deliveries = (
+            session.query(CampaignDelivery)
+            .filter_by(campaign_id=campaign_id, status='failed')
+            .order_by(CampaignDelivery.sequence_no.asc())
+            .all()
+        )
         
         output = io.StringIO()
         writer = csv.writer(output)
@@ -154,20 +144,11 @@ def export_failed_emails_to_csv(campaign_id: int) -> str:
         # Header
         writer.writerow(['Email', 'Error Date', 'Error Message', 'Campaign ID', 'Campaign Name'])
         
-        # Match emails with error messages
-        for email in failed_emails:
-            error_message = ''
-            error_date = ''
-            for log in logs:
-                if email in log.message:
-                    error_message = log.message
-                    error_date = log.ts.isoformat() if log.ts else ''
-                    break
-            
+        for delivery in deliveries:
             writer.writerow([
-                email,
-                error_date,
-                error_message,
+                delivery.email,
+                delivery.updated_ts.isoformat() if delivery.updated_ts else '',
+                delivery.last_error or '',
                 campaign_id,
                 campaign.name
             ])
@@ -190,14 +171,12 @@ def export_all_emails_to_csv(campaign_id: int) -> str:
         if not campaign:
             return ''
         
-        # Get all emails from source
-        all_emails = _get_emails_from_source(campaign)
-        
-        # Get sent/failed emails from logs
-        logs = session.query(Log).filter_by(campaign_id=campaign_id).all()
-        email_data = extract_emails_from_logs(logs)
-        sent_emails = set(email_data['sent'])
-        failed_emails = set(email_data['failed'])
+        deliveries = (
+            session.query(CampaignDelivery)
+            .filter_by(campaign_id=campaign_id)
+            .order_by(CampaignDelivery.sequence_no.asc())
+            .all()
+        )
         
         output = io.StringIO()
         writer = csv.writer(output)
@@ -205,27 +184,16 @@ def export_all_emails_to_csv(campaign_id: int) -> str:
         # Header
         writer.writerow(['Email', 'Status', 'Last Action Date', 'Campaign ID', 'Campaign Name'])
         
-        for email in all_emails:
-            status = 'Pending'
+        for delivery in deliveries:
+            status = (delivery.status or 'pending').capitalize()
             last_action_date = ''
-            
-            if email in sent_emails:
-                status = 'Sent'
-                # Find sent date
-                for log in logs:
-                    if log.level == 'SUCCESS' and email in log.message:
-                        last_action_date = log.ts.isoformat() if log.ts else ''
-                        break
-            elif email in failed_emails:
-                status = 'Failed'
-                # Find error date
-                for log in logs:
-                    if log.level == 'ERROR' and email in log.message:
-                        last_action_date = log.ts.isoformat() if log.ts else ''
-                        break
-            
+            if delivery.status == 'sent' and delivery.sent_ts:
+                last_action_date = delivery.sent_ts.isoformat()
+            elif delivery.updated_ts:
+                last_action_date = delivery.updated_ts.isoformat()
+
             writer.writerow([
-                email,
+                delivery.email,
                 status,
                 last_action_date,
                 campaign_id,
@@ -251,6 +219,7 @@ def export_statistics_to_csv(campaign_id: int) -> str:
             return ''
         
         logs = session.query(Log).filter_by(campaign_id=campaign_id).all()
+        deliveries = session.query(CampaignDelivery).filter_by(campaign_id=campaign_id).all()
         
         output = io.StringIO()
         writer = csv.writer(output)
@@ -267,6 +236,10 @@ def export_statistics_to_csv(campaign_id: int) -> str:
         writer.writerow(['End Time', campaign.end_ts.isoformat() if campaign.end_ts else ''])
         writer.writerow(['Success Count', campaign.success_cnt])
         writer.writerow(['Error Count', campaign.error_cnt])
+        writer.writerow(['Tracked Deliveries', len(deliveries)])
+        writer.writerow(['Sent Deliveries', len([d for d in deliveries if d.status == 'sent'])])
+        writer.writerow(['Failed Deliveries', len([d for d in deliveries if d.status == 'failed'])])
+        writer.writerow(['Pending Deliveries', len([d for d in deliveries if d.status == 'pending'])])
         writer.writerow(['Total Logs', len(logs)])
         writer.writerow(['Success Logs', len([l for l in logs if l.level == 'SUCCESS'])])
         writer.writerow(['Error Logs', len([l for l in logs if l.level == 'ERROR'])])
@@ -313,7 +286,18 @@ def _get_emails_from_source(campaign: Campaign, limit: Optional[int] = None) -> 
         emails = []
         
         if campaign.database_table:
-            df = read_emails_from_table(campaign.database_table, campaign.email_column)
+            try:
+                table_names = json.loads(campaign.database_table)
+                if not isinstance(table_names, list):
+                    table_names = [campaign.database_table]
+            except (json.JSONDecodeError, TypeError):
+                table_names = [campaign.database_table]
+
+            if len(table_names) > 1:
+                from backend.utils.database import read_emails_from_tables
+                df = read_emails_from_tables(table_names, campaign.email_column)
+            else:
+                df = read_emails_from_table(table_names[0], campaign.email_column)
             email_col = 'Email' if 'Email' in df.columns else campaign.email_column
             emails = df[email_col].tolist()[:limit] if limit else df[email_col].tolist()
         elif campaign.csv_path and os.path.exists(campaign.csv_path):

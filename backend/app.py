@@ -58,7 +58,7 @@ def load_environment() -> str:
 
 APP_ENV = load_environment()
 
-from backend.models.database import init_db, get_session, Campaign, Settings, Blacklist, Template
+from backend.models.database import init_db, get_session, Campaign, CampaignDelivery, Settings, Blacklist, Template
 from backend.services.campaign_service import CampaignService
 from backend.services.template_engine import TemplateEngine
 from backend.utils.campaign_logs import (
@@ -236,6 +236,7 @@ def bootstrap_application() -> None:
         ('backend.migrate_add_email_content', 'migrate_add_email_content', 'Email content migration check failed'),
         ('backend.migrate_add_templates', 'migrate_add_templates', 'Templates migration check failed'),
         ('backend.migrate_multi_table', 'migrate_multi_table', 'Multi-table migration check failed'),
+        ('backend.migrate_add_campaign_deliveries', 'migrate_add_campaign_deliveries', 'Campaign delivery migration check failed'),
     ]
     for module_path, fn_name, warning_prefix in migrations:
         try:
@@ -773,6 +774,7 @@ def restart_campaign(campaign_id):
             campaign.end_ts = None
             campaign.success_cnt = 0
             campaign.error_cnt = 0
+            session.query(CampaignDelivery).filter_by(campaign_id=campaign_id).delete()
             session.commit()
             return jsonify({
                 'success': True, 
@@ -785,6 +787,7 @@ def restart_campaign(campaign_id):
         campaign.end_ts = None
         campaign.success_cnt = 0
         campaign.error_cnt = 0
+        session.query(CampaignDelivery).filter_by(campaign_id=campaign_id).delete()
         session.commit()
         
         # Get stored email content

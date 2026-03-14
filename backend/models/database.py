@@ -1,6 +1,6 @@
 """SQLAlchemy database models for MailSenderZilla."""
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import os
@@ -42,6 +42,7 @@ class Campaign(Base):
     
     # Relationships
     logs = relationship("Log", back_populates="campaign", cascade="all, delete-orphan")
+    deliveries = relationship("CampaignDelivery", back_populates="campaign", cascade="all, delete-orphan")
 
 
 class Log(Base):
@@ -56,6 +57,26 @@ class Log(Base):
     
     # Relationships
     campaign = relationship("Campaign", back_populates="logs")
+
+
+class CampaignDelivery(Base):
+    """Per-recipient delivery state for one campaign."""
+    __tablename__ = 'campaign_deliveries'
+    __table_args__ = (
+        UniqueConstraint('campaign_id', 'email', name='uq_campaign_delivery_campaign_email'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    campaign_id = Column(Integer, ForeignKey('campaigns.id'), nullable=False, index=True)
+    email = Column(String, nullable=False)
+    sequence_no = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, default='pending')  # pending, sending, sent, failed
+    last_error = Column(Text)
+    created_ts = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_ts = Column(DateTime, default=datetime.utcnow, nullable=False, onupdate=datetime.utcnow)
+    sent_ts = Column(DateTime)
+
+    campaign = relationship("Campaign", back_populates="deliveries")
 
 
 class Blacklist(Base):

@@ -7,7 +7,7 @@ import logging
 import traceback
 from datetime import datetime
 from typing import List, Dict, Any, Callable, Optional, Tuple
-from backend.models.database import get_session, Campaign, Blacklist, Settings
+from backend.models.database import get_session, Campaign, CampaignDelivery, Log, Blacklist, Settings
 from backend.mailer import BaseMailer, MailerSendMailer, GmailMailer
 from backend.services.template_engine import TemplateEngine
 from backend.utils.campaign_logs import append_campaign_log
@@ -144,16 +144,31 @@ class CampaignService:
             session.close()
     
     def _log(self, campaign_id: int, level: str, message: str):
-        """Log message to file, optional callback, and Telegram."""
+        """Log message to DB and file, optional callback, and Telegram."""
+        session = get_session()
         try:
-            append_campaign_log(campaign_id, level, message, datetime.utcnow())
+            log_ts = datetime.utcnow()
+
+            log_entry = Log(
+                campaign_id=campaign_id,
+                level=level,
+                message=message,
+                ts=log_ts
+            )
+            session.add(log_entry)
+            session.commit()
+
+            append_campaign_log(campaign_id, level, message, log_ts)
             
             if self.log_callback:
                 self.log_callback(campaign_id, level, message)
             
             self._send_telegram_log(campaign_id, level, message)
         except Exception as e:
+            session.rollback()
             logger.error(f"Error logging for campaign {campaign_id}: {e}")
+        finally:
+            session.close()
     
     def _send_telegram_log(self, campaign_id: int, level: str, message: str):
         """Send log message to Telegram if configured."""
@@ -200,6 +215,83 @@ class CampaignService:
         try:
             blacklist = session.query(Blacklist).all()
             return [b.email.lower() for b in blacklist]
+        finally:
+            session.close()
+
+    def _sync_campaign_deliveries(self, campaign_id: int, valid_emails: List[str]) -> List[CampaignDelivery]:
+        """Ensure campaign has one delivery row per valid email in stable order."""
+        session = get_session()
+        try:
+            existing_rows = (
+                session.query(CampaignDelivery)
+                .filter_by(campaign_id=campaign_id)
+                .order_by(CampaignDelivery.sequence_no.asc(), CampaignDelivery.id.asc())
+                .all()
+            )
+            existing_by_email = {row.email.lower(): row for row in existing_rows}
+
+            created = False
+            for index, email in enumerate(valid_emails):
+                email_key = email.lower()
+                row = existing_by_email.get(email_key)
+                if row is None:
+                    row = CampaignDelivery(
+                        campaign_id=campaign_id,
+                        email=email,
+                        sequence_no=index,
+                        status='pending'
+                    )
+                    session.add(row)
+                    existing_by_email[email_key] = row
+                    created = True
+                elif row.sequence_no != index:
+                    row.sequence_no = index
+
+            if created:
+                session.flush()
+
+            session.commit()
+            return (
+                session.query(CampaignDelivery)
+                .filter_by(campaign_id=campaign_id)
+                .order_by(CampaignDelivery.sequence_no.asc(), CampaignDelivery.id.asc())
+                .all()
+            )
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def _mark_delivery_result(self, campaign_id: int, emails: List[str], status: str, last_error: Optional[str] = None):
+        """Persist per-email delivery status for one batch."""
+        if not emails:
+            return
+
+        session = get_session()
+        try:
+            now = datetime.utcnow()
+            normalized = {email.lower(): email for email in emails}
+            rows = (
+                session.query(CampaignDelivery)
+                .filter(CampaignDelivery.campaign_id == campaign_id)
+                .all()
+            )
+            for row in rows:
+                row_email = (row.email or '').lower()
+                if row_email not in normalized:
+                    continue
+                row.status = status
+                row.last_error = last_error if status == 'failed' else None
+                row.updated_ts = now
+                if status == 'sent':
+                    row.sent_ts = now
+                elif status != 'sent':
+                    row.sent_ts = None
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
         finally:
             session.close()
     
@@ -418,6 +510,7 @@ class CampaignService:
             logger.info(f"Campaign {campaign_id}: Starting execution with {len(valid_emails)} valid emails")
             self._log(campaign_id, 'INFO', f'Campaign started. Total emails: {len(email_list)}, Valid: {len(valid_emails)}')
             self._update_campaign_status(campaign_id, 'running')
+            delivery_rows = self._sync_campaign_deliveries(campaign_id, valid_emails)
             
             # Send campaign start notification to Telegram
             self._send_telegram_campaign_start(campaign_id, campaign.name, campaign.provider, len(valid_emails))
@@ -437,37 +530,24 @@ class CampaignService:
                 logger.error(f"Campaign {campaign_id}: {error_msg}\n{traceback.format_exc()}")
                 raise ValueError(error_msg) from e
             
-            # Process in batches
-            # Get current progress (in case of resume)
-            session = get_session()
-            try:
-                campaign = session.query(Campaign).filter_by(id=campaign_id).first()
-                current_success = campaign.success_cnt or 0
-                current_error = campaign.error_cnt or 0
-                
-                # Calculate starting index based on already sent emails
-                # Each batch sends batch_size emails, so calculate which batch to start from
-                already_sent = current_success + current_error
-                start_index = already_sent
-            finally:
-                session.close()
-            
-            success_count = current_success
-            error_count = current_error
+            # Process in batches using persisted per-email state.
+            success_count = len([row for row in delivery_rows if row.status == 'sent'])
+            error_count = len([row for row in delivery_rows if row.status == 'failed'])
+            delivery_rows = [row for row in delivery_rows if row.status != 'sent']
             total_emails = len(valid_emails)
             
-            # Process remaining emails starting from start_index
             batch_size = max(int(campaign.batch_size or 1), 1)
             delay_between_batches = max(int(campaign.delay_between_batches or 0), 0)
             pause_poll_interval = 2
 
-            for i in range(start_index, len(valid_emails), batch_size):
+            for i in range(0, len(delivery_rows), batch_size):
                 # Check if campaign is paused before each batch
                 if self._is_campaign_paused(campaign_id):
                     self._log(campaign_id, 'INFO', f'Campaign paused. Progress: {success_count} sent, {error_count} errors')
                     return  # Exit function, but keep campaign in paused state
                 
-                batch = valid_emails[i:i + batch_size]
+                batch_rows = delivery_rows[i:i + batch_size]
+                batch = [row.email for row in batch_rows]
                 batch_num = i // batch_size + 1
                 
                 try:
@@ -480,9 +560,11 @@ class CampaignService:
                     
                     if result.get('success'):
                         success_count += len(batch)
+                        self._mark_delivery_result(campaign_id, batch, 'sent')
                         self._log(campaign_id, 'SUCCESS', f'Batch {batch_num}: Sent to {len(batch)} recipients')
                     else:
                         error_count += len(batch)
+                        self._mark_delivery_result(campaign_id, batch, 'failed', result.get("message", "Unknown error"))
                         self._log(campaign_id, 'ERROR', f'Batch {batch_num}: {result.get("message", "Unknown error")}')
                     
                     # Update progress
@@ -502,6 +584,7 @@ class CampaignService:
                 
                 except Exception as e:
                     error_count += len(batch)
+                    self._mark_delivery_result(campaign_id, batch, 'failed', str(e))
                     self._log(campaign_id, 'ERROR', f'Batch {batch_num}: Exception - {str(e)}')
                     self._update_campaign_status(campaign_id, 'running', success_count, error_count)
             

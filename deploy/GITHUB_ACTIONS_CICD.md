@@ -12,6 +12,9 @@ This project now includes a GitHub Actions pipeline in `.github/workflows/ci-cd.
   - builds the Vite frontend
 
 - On every `push` to `main` or `master`:
+  - runs the CI checks only
+
+- On manual `workflow_dispatch` with production deploy enabled:
   - runs the same CI checks
   - connects to the server over SSH
   - pulls the latest code
@@ -90,8 +93,18 @@ cd /home/deploy/mailsenderzilla
 DEPLOY_BRANCH=main DEPLOY_PATH=/home/deploy/mailsenderzilla bash deploy/remote_update.sh
 ```
 
+## How to deploy manually
+
+1. Open `Actions` in GitHub.
+2. Select `CI/CD`.
+3. Click `Run workflow`.
+4. Choose the branch.
+5. Enable `Run production deploy`.
+6. Run the workflow.
+7. Approve the `production` environment if required.
+
 ## Notes
 
-- The deploy job only runs on `push` and `workflow_dispatch`, not on pull requests.
+- The deploy job only runs on manual `workflow_dispatch` when `Run production deploy` is enabled.
 - If your default branch is not `main` or `master`, update the workflow accordingly.
 - If the server has local uncommitted changes, `git pull --ff-only` may fail. That is intentional to keep deploys safe.

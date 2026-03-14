@@ -9,11 +9,12 @@ A local web application for bulk email campaigns (ASAP Marine Agency) with suppo
 - ✅ **Multiple providers** - MailerSend API or Gmail SMTP/OAuth
 - ✅ **CSV import** with auto-detection of email columns
 - ✅ **Template engine** - paste plain-text vacancies → auto-wrap into HTML
-- ✅ **Real-time logging** via WebSocket
+- ✅ **Campaign log files** with on-demand monitoring/download
 - ✅ **Rate limiting** - handles MailerSend 429/409 and Gmail daily limits
 - ✅ **Email validation** - RegExp, deduplication, blacklist checking
 - ✅ **Telegram integration** - stream logs to Telegram
 - ✅ **SQLite database** - unified `Main_DataBase.db` for history
+- ✅ **Per-email delivery tracking** - `pending/sent/failed` per recipient
 - ✅ **Blacklist management** - unsubscribe/bounce handling
 
 ## Project Structure
@@ -50,6 +51,7 @@ MailSenderZilla/
 
 For a full development/production workflow with `gunicorn + systemd + nginx`, see [DEPLOYMENT.md](DEPLOYMENT.md).
 For GitHub Actions CI/CD setup, see [deploy/GITHUB_ACTIONS_CICD.md](deploy/GITHUB_ACTIONS_CICD.md).
+For the latest release/platform summary, see [RELEASE_SUMMARY.md](RELEASE_SUMMARY.md).
 Ukrainian full project documentation: [PROJECT_DOCS_UA.md](PROJECT_DOCS_UA.md).
 English full project documentation: [PROJECT_DOCS_EN.md](PROJECT_DOCS_EN.md).
 API interactive docs (Swagger UI): `/api/docs` (OpenAPI JSON: `/api/openapi.json`).
@@ -175,7 +177,7 @@ API interactive docs (Swagger UI): `/api/docs` (OpenAPI JSON: `/api/openapi.json
 
 5. **Start campaign:**
    - Click "Start Campaign"
-   - Monitor real-time logs in campaign tab
+   - Open campaign log file on demand from campaign details
    - View progress (sent/errors) in dashboard
 
 ### Template Variables
@@ -209,17 +211,20 @@ Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Settings to receive:
 | POST | `/api/campaigns` | Create & start campaign |
 | GET | `/api/campaigns` | List all campaigns |
 | GET | `/api/campaigns/<id>` | Get campaign details |
-| GET | `/api/campaigns/<id>/logs` | Get campaign logs |
+| GET | `/api/campaigns/<id>/logs` | Get tail of campaign log file |
+| GET | `/api/campaigns/<id>/log-file` | Get campaign log file metadata |
+| GET | `/api/campaigns/<id>/log-download` | Download campaign log file |
 | GET | `/api/campaigns/<id>/html` | Download rendered HTML |
 | POST | `/api/upload` | Upload CSV file |
 | GET | `/api/blacklist` | Get blacklist |
 | POST | `/api/blacklist` | Add to blacklist |
 
-### WebSocket Events
+### Delivery Tracking Notes
 
-- `connect` - Connect to server
-- `join_campaign` - Join campaign log room
-- `campaign_log` - Receive log messages (level, message, timestamp)
+- New campaigns persist recipient-level state in `campaign_deliveries`
+- `resume` skips recipients already marked as `sent`
+- `restart` intentionally clears delivery state and starts from scratch
+- Old campaigns created before this patch do not automatically backfill recipient-level history
 
 ## Rate Limits
 
@@ -239,6 +244,7 @@ Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Settings to receive:
 
 - **settings** - Application settings (key, value)
 - **campaigns** - Campaign metadata (id, name, provider, status, counts)
+- **campaign_deliveries** - Per-recipient delivery state for each campaign
 - **logs** - Campaign logs (id, campaign_id, ts, level, message)
 - **blacklist** - Blacklisted emails (email, reason, added_ts)
 

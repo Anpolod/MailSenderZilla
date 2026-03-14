@@ -5,13 +5,13 @@
 `MailSenderZilla` is a web-based system for managing email campaigns:
 - create campaigns from CSV files or database tables,
 - send via MailerSend or Gmail,
-- monitor progress and logs in real time,
+- monitor progress and campaign log files,
 - manage email templates,
 - maintain blacklist and database backups.
 
 ## 2. Tech Stack
 
-- Backend: Flask + Flask-SocketIO + SQLAlchemy
+- Backend: Flask + SQLAlchemy
 - Frontend: React + Vite
 - Database: SQLite (`Main_DataBase.db`)
 - Production runtime: Gunicorn + systemd + Nginx
@@ -21,7 +21,7 @@
 ```text
 MailSenderZilla/
 ├── backend/
-│   ├── app.py                 # Flask API + WS + routes
+│   ├── app.py                 # Flask API + routes
 │   ├── wsgi.py                # WSGI entrypoint for gunicorn
 │   ├── services/
 │   │   ├── campaign_service.py
@@ -63,6 +63,7 @@ MailSenderZilla/
 - Frontend build output: `frontend/dist`
 - ENV file: `.env.production`
 - Update/deploy helper: `./run_server.sh`
+- GitHub Actions deploy helper: `deploy/remote_update.sh`
 
 ## 5. Environment Configuration
 
@@ -142,6 +143,8 @@ sudo nginx -t && sudo systemctl reload nginx
 - `POST /api/campaigns/{id}/restart`
 - `POST /api/campaigns/{id}/clone`
 - `GET /api/campaigns/{id}/logs`
+- `GET /api/campaigns/{id}/log-file`
+- `GET /api/campaigns/{id}/log-download`
 - `GET /api/campaigns/{id}/html`
 
 ### Upload / Blacklist / DB / Preview / Backup
@@ -157,12 +160,11 @@ sudo nginx -t && sudo systemctl reload nginx
 - `POST /api/backup/restore`
 - `DELETE /api/backup/{path}`
 
-## 10. WebSocket
+## 10. Logging
 
-Events:
-- `connect`
-- `join_campaign` (room `campaign_{id}`)
-- `campaign_log` (real-time log stream)
+- Campaign logs are written to `logs/campaigns/campaign_<id>.log`
+- The browser no longer auto-streams logs into the page
+- Logs can be opened or downloaded on demand from the campaign detail screen
 
 ## 11. Database
 
@@ -172,21 +174,40 @@ SQLite file:
 Primary tables:
 - `settings`
 - `campaigns`
+- `campaign_deliveries`
 - `logs`
 - `blacklist`
 - `templates`
+
+`campaign_deliveries` stores one row per recipient and campaign with delivery status:
+- `pending`
+- `sent`
+- `failed`
+
+Important behavior:
+- `resume` skips recipients already marked as `sent`
+- `restart` clears delivery state and starts from scratch
+- campaigns created before this patch do not automatically backfill recipient-level history
 
 Important:
 - `.db` files are ignored by git
 - `git pull` does not transfer database content between machines
 
-## 12. Email Templates
+## 12. CI/CD
+
+- GitHub Actions workflow: `.github/workflows/ci-cd.yml`
+- Automatic CI on pull requests and pushes to `main/master`
+- Manual production deploy via `workflow_dispatch`
+- Server deploy script: `deploy/remote_update.sh`
+- Setup guide: `deploy/GITHUB_ACTIONS_CICD.md`
+
+## 13. Email Templates
 
 - Base template: `templates/template.html`
 - Rendering/normalization: `backend/services/template_engine.py`
 - Preview endpoint: `POST /api/preview/email`
 
-## 13. Current UX Highlights
+## 14. Current UX Highlights
 
 - Two-column campaign creation form
 - Sender email dropdown with:
@@ -198,7 +219,7 @@ Important:
   - Sent today
   - Left
 
-## 14. Swagger / OpenAPI
+## 15. Swagger / OpenAPI
 
 Available endpoints:
 - `GET /api/openapi.json` — OpenAPI specification
@@ -209,7 +230,7 @@ Usage:
 2. Click `Try it out`
 3. Run and inspect responses/status codes
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 Service:
 ```bash

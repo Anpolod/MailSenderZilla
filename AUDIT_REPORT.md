@@ -1,116 +1,125 @@
-# Аудит и оптимизация проекта MailSenderZilla
+# MailSenderZilla Audit Report
 
-## Дата: 2024
+## Date
 
-## Выполненные действия
+- 2026-03-14 17:39:15 CET
 
-### ✅ Удаленные файлы
+## Scope
 
-1. **Старые CLI скрипты** (не используются в веб-версии):
-   - `main.py` - старая CLI версия
-   - `email_sender.py` - старая версия отправки
-   - `utils.py` - старые утилиты
+Reviewed the current project state with focus on:
 
-2. **Тестовые и временные файлы**:
-   - `create_test_database.py` - тестовый скрипт
-   - `create_test_table.py` - тестовый скрипт
-   - `example.txt` - старый пример
+- campaign execution and resume/restart behavior
+- per-email delivery tracking
+- export/statistics consistency
+- deployment automation and CI/CD
+- documentation alignment with actual behavior
 
-3. **Секретные файлы**:
-   - `access_token.txt` - не должен храниться в репозитории
+## Findings
 
-4. **Дубликаты структуры**:
-   - `frontend/frontend/` - пустая дублирующая папка (если была)
+### Resolved. Partial batch success is now accounted for correctly
 
-### ✅ Оптимизированные зависимости
+Files:
+- `backend/services/campaign_service.py:298`
+- `backend/services/campaign_service.py:580`
 
-**Удалено из requirements.txt:**
-- `openpyxl>=3.0.0` - не используется (pandas работает с CSV напрямую)
+Resolution:
+- batch handling now splits provider results into sent and failed recipient subsets
+- `sent_count` is respected when a provider reports partial success
+- only the actually delivered subset is marked `sent`
+- the remainder is marked `failed`
 
-**Оставлено:**
-- Все основные зависимости используются
-- `eventlet` - требуется для Flask-SocketIO
-- Development зависимости помечены как optional
+Status:
+- resolved in current working tree
 
-### ✅ Обновлен .gitignore
+### P1. Resuming legacy paused campaigns can resend already-delivered emails
 
-Добавлены правила для:
-- Кеш файлов Python (`__pycache__`, `*.pyc`)
-- Логи (`*.log`, `._*.log`)
-- Секреты (`access_token.txt`, `*.token`)
-- Старые файлы (`main.py`, `email_sender.py`, `utils.py`)
-- Mac OS файлы (`._*`, `.DS_Store`)
-- Тестовые скрипты (`create_test_*.py`)
-- Папка examples (кроме сохраненных для справки)
+Files:
+- `backend/app.py:630`
+- `backend/services/campaign_service.py:513`
+- `backend/services/campaign_service.py:533`
 
-### ✅ Создан скрипт очистки
+Details:
+- `campaign_deliveries` is only populated once the new tracking code runs.
+- For campaigns created before this patch, a paused campaign may have no delivery rows even though emails were already sent.
+- On resume, `_sync_campaign_deliveries()` creates fresh `pending` rows for all valid recipients, and execution proceeds from the beginning of the remaining list model.
 
-`cleanup.py` - автоматическая очистка:
-- Кеш файлов Python
-- Временные файлы IDE
-- Логи
-- OS-специфичные файлы
+Impact:
+- duplicate delivery risk for historical campaigns
+- operators may assume resume is safe when recipient-level history is actually unknown
 
-**Использование:**
-```bash
-python cleanup.py
-```
+Recommendation:
+- block `resume` for paused campaigns with empty `campaign_deliveries` and non-zero counters
+- require explicit confirmation or a separate recovery path
+- optionally add a backfill/import tool for legacy campaigns
 
-## Рекомендации
+### P2. Delay-after-batch logic can sleep after the final remaining batch on resume
 
-### Структура проекта (текущая)
+File:
+- `backend/services/campaign_service.py:573`
 
-```
-MailSenderZilla/
-├── backend/              # Flask backend
-│   ├── app.py
-│   ├── mailer/
-│   ├── models/
-│   ├── services/
-│   └── utils/
-├── frontend/             # React frontend
-│   └── src/
-├── templates/            # Email templates
-├── examples/             # Примеры (reference)
-├── uploads/              # Загруженные CSV (gitignored)
-├── backups/              # Бэкапы БД (gitignored)
-├── .cursor/              # Cursor AI инструкции
-├── .gitignore
-├── requirements.txt
-├── README.md
-└── cleanup.py            # Скрипт очистки
-```
+Details:
+- The delay guard checks `i + batch_size < len(valid_emails)`.
+- After resume, the loop iterates over `delivery_rows` filtered to unsent recipients, not over the full `valid_emails`.
+- If many recipients are already marked `sent`, the final actual batch may still satisfy the old condition and unnecessarily wait before completion.
 
-### Документация
+Impact:
+- unnecessary delay before marking a resumed campaign completed
+- confusing operator experience when only a few emails remain
 
-Текущие файлы документации:
-- `README.md` - основная документация (EN)
-- `README_RU.md` - русская версия
-- `RUN_WINDOWS.md` - инструкции для Windows
-- `УСТАНОВКА.md` - русская установка
-- `FRONTEND_SETUP.md` - настройка frontend
-- `IMPLEMENTATION.md` - техническая документация
-- `IMPROVEMENTS.md` - roadmap улучшений
+Recommendation:
+- compare against `len(delivery_rows)` instead of `len(valid_emails)` once the send queue has been reduced
 
-**Рекомендация:** Можно объединить `УСТАНОВКА.md` и `RUN_WINDOWS.md` в один файл.
+### P2. Repository deploy script still uses a single-shot health check
 
-## Статистика
+File:
+- `deploy/remote_update.sh:64`
 
-- **Удалено файлов:** 6+
-- **Оптимизировано зависимостей:** 1
-- **Обновлено правил .gitignore:** 10+
-- **Создано утилит:** 1 (cleanup.py)
+Details:
+- The repository version still performs one `curl` immediately after restarting `mailsenderzilla`.
+- Earlier production logs already showed that gunicorn can need a short warm-up window.
+- A one-shot health check makes deploys flaky even when the service is healthy a second later.
 
-## Следующие шаги
+Impact:
+- false-negative deploy failures in GitHub Actions
+- unnecessary manual reruns
 
-1. ✅ Запустить `python cleanup.py` для очистки кеша
-2. ⚠️ Рассмотреть объединение документации
-3. ⚠️ Добавить pre-commit hooks для автоматической очистки
-4. ⚠️ Создать .env.example с описанием всех переменных
+Recommendation:
+- commit the retry-based health check logic into `deploy/remote_update.sh`
+- keep the server copy and repository copy aligned
 
-## Примечания
+## Documentation Audit
 
-- Все старые файлы удалены (но доступны в git history если нужно)
-- Примеры сохранены в `examples/` для справки
-- База данных `Main_DataBase.db` остается (в .gitignore)
-- Все кеш-файлы будут автоматически игнорироваться
+Updated/verified areas:
+
+- `README.md`
+- `DEPLOYMENT.md`
+- `PROJECT_DOCS_EN.md`
+- `PROJECT_DOCS_UA.md`
+- `deploy/GITHUB_ACTIONS_CICD.md`
+- `RELEASE_SUMMARY.md`
+
+Documentation now reflects:
+
+- manual production deploy through GitHub Actions
+- file-based campaign logs with on-demand access
+- `campaign_deliveries` as the new recipient-level tracking table
+- current `resume`/`restart` behavior
+
+Remaining doc recommendation:
+
+- add an explicit operator warning section for legacy campaigns created before recipient-level tracking was introduced
+
+## Verification Performed
+
+- reviewed backend execution flow and API routes
+- reviewed deploy script and CI/CD workflow
+- reviewed export/statistics code paths
+- ran Python compile checks on updated backend modules
+- ran frontend production build successfully
+
+## Recommended Next Fix Order
+
+1. Guard resume for legacy paused campaigns with no delivery rows.
+2. Commit retry-based health check to `deploy/remote_update.sh`.
+3. Fix final-batch delay logic on resume.
+4. Add tests around delivery tracking, resume, restart, and exports.

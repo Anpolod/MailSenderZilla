@@ -294,6 +294,25 @@ class CampaignService:
             raise
         finally:
             session.close()
+
+    def _split_batch_delivery_result(self, batch: List[str], result: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+        """Split one batch into sent and failed recipients based on provider result."""
+        if not batch:
+            return [], []
+
+        sent_count_raw = result.get('sent_count')
+        if sent_count_raw is None:
+            sent_count = len(batch) if result.get('success') else 0
+        else:
+            try:
+                sent_count = int(sent_count_raw)
+            except (TypeError, ValueError):
+                sent_count = len(batch) if result.get('success') else 0
+
+        sent_count = max(0, min(sent_count, len(batch)))
+        sent_emails = batch[:sent_count]
+        failed_emails = batch[sent_count:]
+        return sent_emails, failed_emails
     
     def _filter_emails(self, emails: List[str]) -> List[str]:
         """
@@ -557,15 +576,19 @@ class CampaignService:
                         recipients=batch,
                         sender_email=campaign.sender_email
                     )
-                    
-                    if result.get('success'):
-                        success_count += len(batch)
-                        self._mark_delivery_result(campaign_id, batch, 'sent')
-                        self._log(campaign_id, 'SUCCESS', f'Batch {batch_num}: Sent to {len(batch)} recipients')
-                    else:
-                        error_count += len(batch)
-                        self._mark_delivery_result(campaign_id, batch, 'failed', result.get("message", "Unknown error"))
-                        self._log(campaign_id, 'ERROR', f'Batch {batch_num}: {result.get("message", "Unknown error")}')
+
+                    sent_emails, failed_emails = self._split_batch_delivery_result(batch, result)
+                    error_message = result.get("message", "Unknown error")
+
+                    if sent_emails:
+                        success_count += len(sent_emails)
+                        self._mark_delivery_result(campaign_id, sent_emails, 'sent')
+                        self._log(campaign_id, 'SUCCESS', f'Batch {batch_num}: Sent to {len(sent_emails)} recipients')
+
+                    if failed_emails:
+                        error_count += len(failed_emails)
+                        self._mark_delivery_result(campaign_id, failed_emails, 'failed', error_message)
+                        self._log(campaign_id, 'ERROR', f'Batch {batch_num}: {error_message}')
                     
                     # Update progress
                     self._update_campaign_status(campaign_id, 'running', success_count, error_count)

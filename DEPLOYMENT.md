@@ -2,17 +2,19 @@
 
 ## Architecture
 
-- Backend: Flask + Socket.IO (`backend.app`)
+- Backend: Flask (`backend.app`)
 - Frontend: React + Vite (`frontend/`)
 - Process manager: `systemd` (`mailsenderzilla.service`)
 - HTTP reverse proxy: `nginx`
 - App server: `gunicorn` (`backend.wsgi:application`)
 - Database: SQLite (`Main_DataBase.db`)
+- Delivery tracking: SQLite table `campaign_deliveries`
+- Campaign logs: file logs in `logs/campaigns/`
 
 Runtime flow in production:
 
 1. Nginx serves `frontend/dist` as static files.
-2. Nginx proxies `/api/*` and `/socket.io/*` to `127.0.0.1:5000`.
+2. Nginx proxies `/api/*` to `127.0.0.1:5000`.
 3. Systemd runs gunicorn workers.
 4. Gunicorn imports `backend.wsgi`, which loads env + bootstraps DB/migrations.
 
@@ -116,6 +118,31 @@ sudo systemctl daemon-reload
 sudo systemctl restart mailsenderzilla
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+## GitHub Actions CI/CD
+
+- CI runs automatically on `pull_request` and `push` to `main/master`
+- Production deploy runs only manually through GitHub Actions
+- Deploy helper script: `deploy/remote_update.sh`
+- Full setup guide: `deploy/GITHUB_ACTIONS_CICD.md`
+
+Production deploy flow:
+
+1. Push code to `main`
+2. Wait for CI to pass
+3. Open `Actions` -> `CI/CD`
+4. Click `Run workflow`
+5. Enable `Run production deploy`
+6. Approve `production` environment if required
+
+The deploy script retries backend health checks after `systemd` restart to avoid false failures during startup.
+
+## Delivery Tracking
+
+- New campaigns persist one row per recipient in `campaign_deliveries`
+- `resume` skips recipients already marked as `sent`
+- `restart` clears delivery state and starts from zero
+- Old campaigns created before this patch do not auto-backfill exact recipient state
 
 ## Troubleshooting quick checks
 

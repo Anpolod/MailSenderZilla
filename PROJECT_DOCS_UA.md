@@ -5,13 +5,13 @@
 `MailSenderZilla` — веб-система для запуску та керування email-кампаніями:
 - створення кампаній з CSV або з таблиць БД,
 - відправка через MailerSend або Gmail,
-- моніторинг прогресу й логів у реальному часі,
+- моніторинг прогресу та лог-файлів кампаній,
 - збереження шаблонів листів,
 - blacklist і backup/restore БД.
 
 ## 2. Технічний стек
 
-- Backend: Flask + Flask-SocketIO + SQLAlchemy
+- Backend: Flask + SQLAlchemy
 - Frontend: React + Vite
 - БД: SQLite (`Main_DataBase.db`)
 - Production: Gunicorn + systemd + Nginx
@@ -21,7 +21,7 @@
 ```text
 MailSenderZilla/
 ├── backend/
-│   ├── app.py                 # Flask API + WS + роутинг
+│   ├── app.py                 # Flask API + роутинг
 │   ├── wsgi.py                # WSGI entrypoint для gunicorn
 │   ├── services/
 │   │   ├── campaign_service.py
@@ -63,6 +63,7 @@ MailSenderZilla/
 - Frontend: `frontend/dist`
 - ENV: `.env.production`
 - Оновлення/деплой: `./run_server.sh`
+- GitHub Actions deploy helper: `deploy/remote_update.sh`
 
 ## 5. ENV-конфігурація
 
@@ -142,6 +143,8 @@ sudo nginx -t && sudo systemctl reload nginx
 - `POST /api/campaigns/{id}/restart`
 - `POST /api/campaigns/{id}/clone`
 - `GET /api/campaigns/{id}/logs`
+- `GET /api/campaigns/{id}/log-file`
+- `GET /api/campaigns/{id}/log-download`
 - `GET /api/campaigns/{id}/html`
 
 ### Upload / Blacklist / DB / Preview / Backup
@@ -157,12 +160,11 @@ sudo nginx -t && sudo systemctl reload nginx
 - `POST /api/backup/restore`
 - `DELETE /api/backup/{path}`
 
-## 10. WebSocket
+## 10. Логування
 
-Події:
-- `connect`
-- `join_campaign` (room `campaign_{id}`)
-- `campaign_log` (стрім логів)
+- Логи кампаній пишуться у `logs/campaigns/campaign_<id>.log`
+- Браузер більше не стрімить логи автоматично на сторінку
+- Лог можна відкрити або завантажити за запитом зі сторінки кампанії
 
 ## 11. База даних
 
@@ -171,21 +173,40 @@ SQLite: `Main_DataBase.db`
 Основні таблиці:
 - `settings`
 - `campaigns`
+- `campaign_deliveries`
 - `logs`
 - `blacklist`
 - `templates`
+
+`campaign_deliveries` зберігає по одному запису на email у межах кампанії зі статусом:
+- `pending`
+- `sent`
+- `failed`
+
+Важлива поведінка:
+- `resume` пропускає email, які вже позначені як `sent`
+- `restart` очищає delivery-state і запускає кампанію з нуля
+- кампанії, створені до цього патчу, не мають автоматичного backfill історії по кожному recipient
 
 Важливо:
 - `.db` не зберігається в git (`.gitignore`)
 - `git pull` не переносить дані БД між машинами
 
-## 12. Шаблони листів
+## 12. CI/CD
+
+- GitHub Actions workflow: `.github/workflows/ci-cd.yml`
+- Автоматичний CI на `pull_request` і `push` у `main/master`
+- Ручний production deploy через `workflow_dispatch`
+- Скрипт серверного деплою: `deploy/remote_update.sh`
+- Інструкція: `deploy/GITHUB_ACTIONS_CICD.md`
+
+## 13. Шаблони листів
 
 - Базовий шаблон: `templates/template.html`
 - Рендер і нормалізація: `backend/services/template_engine.py`
 - Прев’ю: `POST /api/preview/email`
 
-## 13. Поточні UX-особливості
+## 14. Поточні UX-особливості
 
 - Форма кампанії: двоколонковий лаконічний layout
 - `Sender Email`: вибір із:
@@ -197,7 +218,7 @@ SQLite: `Main_DataBase.db`
   - Sent today
   - Left
 
-## 14. Swagger / OpenAPI для тестування
+## 15. Swagger / OpenAPI для тестування
 
 Доступно:
 - `GET /api/openapi.json` — OpenAPI-специфікація
@@ -208,7 +229,7 @@ SQLite: `Main_DataBase.db`
 2. Виконувати запити прямо з UI
 3. Перевіряти відповіді й коди статусів
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 Сервіс:
 ```bash
